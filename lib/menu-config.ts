@@ -7,6 +7,20 @@ export const menuConfig: MenuGroup[] = [
     href: "/",
   },
   {
+    label: "MEO対策",
+    icon: "MapPin",
+    children: [
+      { label: "GBP最適化診断", href: "/meo/diagnosis" },
+      { label: "施策チェックリスト", href: "/meo/checklist" },
+      { label: "キーワード最適化", href: "/meo/keywords" },
+      { label: "NAP一貫性チェック", href: "/meo/nap-check" },
+      { label: "サイテーション管理", href: "/meo/citations" },
+      { label: "ローカルパック順位", href: "/meo/local-pack" },
+      { label: "投稿最適化", href: "/meo/post-optimization" },
+      { label: "写真最適化ガイド", href: "/meo/photo-guide" },
+    ],
+  },
+  {
     label: "AI運用アシスタント",
     icon: "Bot",
     children: [

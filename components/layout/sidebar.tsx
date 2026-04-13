@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Megaphone,
   FileText,
+  MapPin,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -24,6 +25,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   TrendingUp,
   Megaphone,
   FileText,
+  MapPin,
 }
 
 export function Sidebar() {
