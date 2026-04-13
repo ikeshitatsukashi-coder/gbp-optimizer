@@ -29,16 +29,20 @@ export const menuConfig: MenuGroup[] = [
     ],
   },
   {
-    label: "Googleデータ連携",
+    label: "Googleインサイト",
     icon: "BarChart3",
     children: [
-      { label: "--- Googleインサイト ---", href: "#" },
       { label: "インサイト情報", href: "/google-data/insights" },
       { label: "業種別インサイト比較", href: "/google-data/insights/industry" },
       { label: "都道府県別インサイト比較", href: "/google-data/insights/prefecture" },
       { label: "インサイトクロス分析", href: "/google-data/insights/cross" },
       { label: "データダウンロード", href: "/google-data/insights/download" },
-      { label: "--- Googleビジネスプロフィール ---", href: "#" },
+    ],
+  },
+  {
+    label: "Googleビジネスプロフィール",
+    icon: "Store",
+    children: [
       { label: "店舗基本情報", href: "/google-data/gbp/basic-info" },
       { label: "飲食店メニュー", href: "/google-data/gbp/menu" },
       { label: "HP連携", href: "/google-data/gbp/hp" },
