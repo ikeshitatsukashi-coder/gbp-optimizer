@@ -1,20 +1,48 @@
 "use client"
 
-import { Bell, ChevronDown, LogIn, LogOut } from "lucide-react"
+import { Bell, LogIn, LogOut, ChevronDown, Building2 } from "lucide-react"
 import { useSession, signIn, signOut } from "next-auth/react"
+import { useGbp } from "@/lib/store"
 import { storeName } from "@/lib/mock-data"
 
 export function Header() {
   const { data: session, status } = useSession()
+  const { locations, locationName, setLocationName, loading } = useGbp()
+
+  const currentTitle =
+    locations.find((l) => l.name === locationName)?.title ?? storeName
 
   return (
     <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0">
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">店舗名：</span>
-        <button className="flex items-center gap-1 font-bold text-sm">
-          {storeName}
-          <ChevronDown className="h-3 w-3" />
-        </button>
+        {session && locations.length > 1 ? (
+          <div className="relative">
+            <select
+              value={locationName ?? ""}
+              onChange={(e) => setLocationName(e.target.value)}
+              className="appearance-none font-bold text-sm pr-6 pl-1 py-1 border rounded bg-white cursor-pointer hover:bg-gray-50"
+            >
+              {locations.map((loc) => (
+                <option key={loc.name} value={loc.name}>
+                  {loc.title}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none text-gray-500" />
+          </div>
+        ) : (
+          <span className="font-bold text-sm flex items-center gap-1">
+            {loading ? (
+              <span className="text-muted-foreground">読込中...</span>
+            ) : (
+              <>
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                {currentTitle}
+              </>
+            )}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-3">
         <button className="relative p-2 hover:bg-gray-100 rounded">
