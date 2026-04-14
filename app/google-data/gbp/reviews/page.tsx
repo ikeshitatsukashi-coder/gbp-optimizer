@@ -2,24 +2,89 @@
 
 import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Star, MessageSquare, Search } from "lucide-react"
-import { reviewsList } from "@/lib/mock-data"
+import { Star, MessageSquare, Search, Loader2 } from "lucide-react"
+import { useGbpData } from "@/lib/use-gbp-data"
+import { useGbp } from "@/lib/store"
+import { reviewsList as mockReviews } from "@/lib/mock-data"
+
+interface Review {
+  id: string
+  author: string
+  rating: number
+  date: string
+  text: string
+  reply: string | null
+  replyDate: string | null
+}
+
+function transformApiReviews(apiData: Record<string, unknown> | null): Review[] {
+  if (!apiData || !Array.isArray((apiData as { reviews?: unknown[] }).reviews)) {
+    return mockReviews
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (apiData as any).reviews.map((r: any) => ({
+    id: r.reviewId || r.name,
+    author: r.reviewer?.displayName || "匿名",
+    rating: parseInt(r.starRating?.replace("STAR_RATING_", "").replace("ONE", "1").replace("TWO", "2").replace("THREE", "3").replace("FOUR", "4").replace("FIVE", "5") || "0"),
+    date: r.createTime ? new Date(r.createTime).toLocaleDateString("ja-JP") : "",
+    text: r.comment || "",
+    reply: r.reviewReply?.comment || null,
+    replyDate: r.reviewReply?.updateTime ? new Date(r.reviewReply.updateTime).toLocaleDateString("ja-JP") : null,
+  }))
+}
 
 export default function ReviewsPage() {
   const [filter, setFilter] = useState("all")
   const [search, setSearch] = useState("")
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({})
+  const [replying, setReplying] = useState<string | null>(null)
+  const { locationName } = useGbp()
 
-  const filtered = reviewsList.filter((r) => {
-    if (filter === "unreplied") return !r.reply
-    if (filter === "replied") return !!r.reply
-    return true
-  }).filter((r) =>
-    search ? r.text.includes(search) || r.author.includes(search) : true
-  )
+  const { data: apiReviews, loading, refetch } = useGbpData("reviews", null)
+  const reviews = transformApiReviews(apiReviews)
+
+  const filtered = reviews
+    .filter((r) => {
+      if (filter === "unreplied") return !r.reply
+      if (filter === "replied") return !!r.reply
+      return true
+    })
+    .filter((r) => (search ? r.text.includes(search) || r.author.includes(search) : true))
+
+  const handleReply = async (reviewId: string) => {
+    const comment = replyTexts[reviewId]
+    if (!comment || !locationName) return
+
+    setReplying(reviewId)
+    try {
+      const res = await fetch("/api/gbp/reviews", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reviewName: `${locationName}/reviews/${reviewId}`,
+          comment,
+        }),
+      })
+      if (res.ok) {
+        setReplyTexts((prev) => ({ ...prev, [reviewId]: "" }))
+        refetch()
+      }
+    } catch (err) {
+      console.error("Reply failed:", err)
+    } finally {
+      setReplying(null)
+    }
+  }
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">クチコミ管理</h1>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> データを取得中...
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex items-center gap-4 mb-6">
@@ -79,9 +144,7 @@ export default function ReviewsPage() {
                 </div>
                 <span
                   className={`text-xs px-2 py-0.5 rounded ${
-                    review.reply
-                      ? "bg-green-100 text-green-700"
-                      : "bg-orange-100 text-orange-700"
+                    review.reply ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
                   }`}
                 >
                   {review.reply ? "返信済み" : "未返信"}
@@ -102,10 +165,19 @@ export default function ReviewsPage() {
                 <div className="mt-3">
                   <textarea
                     placeholder="返信を入力..."
+                    value={replyTexts[review.id] || ""}
+                    onChange={(e) =>
+                      setReplyTexts((prev) => ({ ...prev, [review.id]: e.target.value }))
+                    }
                     className="w-full border rounded px-3 py-2 text-sm h-20"
                   />
                   <div className="flex justify-end mt-2">
-                    <button className="bg-[#2c3e50] text-white px-4 py-1.5 rounded text-sm hover:bg-[#34495e]">
+                    <button
+                      onClick={() => handleReply(review.id)}
+                      disabled={replying === review.id || !replyTexts[review.id]}
+                      className="bg-[#2c3e50] text-white px-4 py-1.5 rounded text-sm hover:bg-[#34495e] disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {replying === review.id && <Loader2 className="h-3 w-3 animate-spin" />}
                       返信する
                     </button>
                   </div>
