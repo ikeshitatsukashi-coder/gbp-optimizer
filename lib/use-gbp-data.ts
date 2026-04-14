@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { useGbp } from "@/lib/store"
 
 /**
- * Hook to fetch GBP API data with automatic mock fallback
+ * Hook to fetch GBP API data with automatic mock fallback.
+ * Only fetches once per locationName change to avoid rate limiting.
  */
 export function useGbpData<T>(
   endpoint: string,
@@ -17,6 +18,7 @@ export function useGbpData<T>(
   const [data, setData] = useState<T>(mockData)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const fetchedFor = useRef<string | null>(null)
 
   const fetchData = async () => {
     // Use mock if not logged in or no location
@@ -24,6 +26,10 @@ export function useGbpData<T>(
       setData(mockData)
       return
     }
+
+    // Skip if already fetched for this location (unless manual refetch)
+    if (fetchedFor.current === `${locationName}:${endpoint}`) return
+    fetchedFor.current = `${locationName}:${endpoint}`
 
     setLoading(true)
     setError(null)
@@ -44,11 +50,15 @@ export function useGbpData<T>(
     } catch (err) {
       console.error(`Failed to fetch ${endpoint}:`, err)
       setError(err instanceof Error ? err.message : "取得失敗")
-      // Fall back to mock
       setData(mockData)
     } finally {
       setLoading(false)
     }
+  }
+
+  const refetch = () => {
+    fetchedFor.current = null
+    fetchData()
   }
 
   useEffect(() => {
@@ -56,5 +66,5 @@ export function useGbpData<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, locationName])
 
-  return { data, loading, error, refetch: fetchData }
+  return { data, loading, error, refetch }
 }
