@@ -1,9 +1,12 @@
 "use client"
 
-import { Bell, ChevronDown } from "lucide-react"
+import { Bell, ChevronDown, LogIn, LogOut } from "lucide-react"
+import { useSession, signIn, signOut } from "next-auth/react"
 import { storeName } from "@/lib/mock-data"
 
 export function Header() {
+  const { data: session, status } = useSession()
+
   return (
     <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0">
       <div className="flex items-center gap-2">
@@ -20,6 +23,27 @@ export function Header() {
             4
           </span>
         </button>
+
+        {status === "loading" ? (
+          <span className="text-xs text-muted-foreground">読込中...</span>
+        ) : session ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{session.user?.email}</span>
+            <button
+              onClick={() => signOut()}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 border rounded px-2 py-1"
+            >
+              <LogOut className="h-3 w-3" /> ログアウト
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => signIn("google")}
+            className="flex items-center gap-1 bg-blue-500 text-white text-xs px-3 py-1.5 rounded hover:bg-blue-600"
+          >
+            <LogIn className="h-3 w-3" /> Googleでログイン
+          </button>
+        )}
       </div>
     </header>
   )
