@@ -50,6 +50,7 @@ export const menuConfig: MenuGroup[] = [
       { label: "投稿", href: "/google-data/gbp/posts" },
       { label: "HP投稿連携", href: "/google-data/gbp/hp-posts" },
       { label: "クチコミ管理", href: "/google-data/gbp/reviews" },
+      { label: "低評価クチコミ削除申請", href: "/google-data/gbp/review-flag" },
       { label: "クチコミ分析", href: "/google-data/gbp/review-analysis" },
       { label: "クチコミ評価要約", href: "/google-data/gbp/review-summary" },
       { label: "クチコミハイライト分析", href: "/google-data/gbp/review-highlights" },
