@@ -12,42 +12,95 @@ import {
   actionData as mockAction,
   rankData as mockRank,
   reviewSummary as mockReviewSummary,
-  aggregationPeriod,
 } from "@/lib/mock-data"
+import {
+  transformInsightsToKpi,
+  transformInsightsToActionChart,
+} from "@/lib/insights-transform"
+
+// Generate dynamic 30-day date range
+function getDateRange() {
+  const end = new Date()
+  end.setDate(end.getDate() - 1) // Yesterday (data lag)
+  const start = new Date(end)
+  start.setDate(start.getDate() - 29)
+
+  const fmt = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return { iso: `${y}-${m}-${day}`, display: `${y}/${m}/${day}` }
+  }
+
+  return { start: fmt(start), end: fmt(end) }
+}
 
 export default function DashboardPage() {
   const { data: session } = useSession()
   const { locationName } = useGbp()
 
-  // Fetch insights data from API (falls back to mock)
-  const { data: insightsData, loading: insightsLoading } = useGbpData(
-    "insights",
-    null,
-    {
-      startDate: "2026-03-14",
-      endDate: "2026-04-13",
+  const dateRange = getDateRange()
+
+  // Fetch insights data from API
+  const { data: insightsData, loading: insightsLoading, error: insightsError } = useGbpData<
+    Record<string, unknown> | null
+  >("insights", null, {
+    startDate: dateRange.start.iso,
+    endDate: dateRange.end.iso,
+  })
+
+  // Fetch reviews from API
+  const { data: reviewsData, loading: reviewsLoading } = useGbpData<
+    Record<string, unknown> | null
+  >("reviews", null)
+
+  // Transform API data or fall back to mock
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const realKpi = transformInsightsToKpi(insightsData as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const realAction = transformInsightsToActionChart(insightsData as any)
+
+  const usingRealData = !!session && !!locationName && !!realKpi
+
+  const kpiData = realKpi || mockKpi
+  const actionData = realAction || mockAction
+  const rankData = mockRank // Ranking API is separate
+
+  // Reviews summary
+  let totalReviewCount = mockReviewSummary.totalCount
+  let avgRatingFromReviews = 0
+  if (reviewsData && Array.isArray((reviewsData as { reviews?: unknown[] }).reviews)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reviews = (reviewsData as any).reviews
+    totalReviewCount =
+      (reviewsData as { totalReviewCount?: number }).totalReviewCount ?? reviews.length
+    if (reviews.length > 0) {
+      const ratings = reviews
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((r: any) => {
+          const s = r.starRating
+          if (!s) return 0
+          return ["ONE", "TWO", "THREE", "FOUR", "FIVE"].indexOf(
+            s.replace("STAR_RATING_", "")
+          ) + 1
+        })
+        .filter((n: number) => n > 0)
+      if (ratings.length > 0) {
+        avgRatingFromReviews =
+          ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length
+      }
     }
-  )
+  }
 
-  // Fetch reviews from API (falls back to mock)
-  const { data: reviewsData, loading: reviewsLoading } = useGbpData<Record<string, unknown> | null>(
-    "reviews",
-    null
-  )
-
-  // Transform API data or use mock
-  const kpiData = mockKpi // Will be replaced with real insights when available
-  const actionData = mockAction
-  const rankData = mockRank
-  const reviewSummary = reviewsData
+  const reviewSummary = usingRealData
     ? {
-        totalCount: (reviewsData.totalReviewCount as number) ?? mockReviewSummary.totalCount,
-        monthlyCount: mockReviewSummary.monthlyCount,
-        latestDate: mockReviewSummary.latestDate,
+        totalCount: totalReviewCount,
+        monthlyCount: 0,
+        latestDate: dateRange.end.display.replace(/-/g, "/"),
       }
     : mockReviewSummary
 
-  const isConnected = !!session && !!locationName
+  const isConnected = usingRealData
 
   return (
     <div>
@@ -72,7 +125,7 @@ export default function DashboardPage() {
 
       {!session && (
         <div className="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-800 mb-6">
-          右上の「Googleでログイン」からログインすると、GBPのリアルデータが表示されます。現在はモックデータを表示中です。
+          右上の「Googleでログイン」からログインすると、GBPのリアルデータが表示されます。
         </div>
       )}
 
@@ -88,9 +141,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <p className="text-sm text-orange-500 mb-6">
-        本画面では店舗様が利用していない機能が存在していますので、一部のデータが表示されません。ご注意ください。
-      </p>
+      {insightsError && (
+        <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800 mb-6">
+          インサイトデータの取得に失敗しました: {insightsError}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
@@ -100,7 +155,8 @@ export default function DashboardPage() {
       </div>
 
       <p className="text-xs text-muted-foreground mb-6">
-        集計期間：{aggregationPeriod.start} — {aggregationPeriod.end}
+        集計期間：{dateRange.start.display} — {dateRange.end.display}
+        {avgRatingFromReviews > 0 && ` | 平均評価: ${avgRatingFromReviews.toFixed(1)}★`}
       </p>
 
       {/* Charts */}

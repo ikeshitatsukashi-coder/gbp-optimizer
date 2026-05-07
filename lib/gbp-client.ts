@@ -128,28 +128,41 @@ export function createGmbClient(accessToken: string) {
     },
 
     /**
-     * Get location insights (performance metrics)
-     * Note: This uses the Business Performance API
+     * Get location insights (performance metrics) — multi-metric
+     * Returns daily time series for all key metrics
      */
     async getInsights(locationName: string, startDate: string, endDate: string) {
-      // Business Performance API endpoint
       const performanceUrl = "https://businessprofileperformance.googleapis.com/v1"
+      const [sy, sm, sd] = startDate.split("-")
+      const [ey, em, ed] = endDate.split("-")
+
+      const metrics = [
+        "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
+        "BUSINESS_IMPRESSIONS_DESKTOP_SEARCH",
+        "BUSINESS_IMPRESSIONS_MOBILE_MAPS",
+        "BUSINESS_IMPRESSIONS_MOBILE_SEARCH",
+        "BUSINESS_DIRECTION_REQUESTS",
+        "CALL_CLICKS",
+        "WEBSITE_CLICKS",
+      ]
+
+      const params = new URLSearchParams()
+      metrics.forEach((m) => params.append("dailyMetrics", m))
+      params.set("dailyRange.startDate.year", sy)
+      params.set("dailyRange.startDate.month", sm)
+      params.set("dailyRange.startDate.day", sd)
+      params.set("dailyRange.endDate.year", ey)
+      params.set("dailyRange.endDate.month", em)
+      params.set("dailyRange.endDate.day", ed)
+
       const res = await fetch(
-        `${performanceUrl}/${locationName}:getDailyMetricsTimeSeries?` +
-          new URLSearchParams({
-            "dailyMetric": "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
-            "dailyRange.startDate.year": startDate.split("-")[0],
-            "dailyRange.startDate.month": startDate.split("-")[1],
-            "dailyRange.startDate.day": startDate.split("-")[2],
-            "dailyRange.endDate.year": endDate.split("-")[0],
-            "dailyRange.endDate.month": endDate.split("-")[1],
-            "dailyRange.endDate.day": endDate.split("-")[2],
-          }),
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
+        `${performanceUrl}/${locationName}:fetchMultiDailyMetricsTimeSeries?${params}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
       )
-      if (!res.ok) throw new Error(`Performance API error: ${res.status}`)
+      if (!res.ok) {
+        const txt = await res.text()
+        throw new Error(`Performance API error: ${res.status} ${txt}`)
+      }
       return res.json()
     },
 
