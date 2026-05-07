@@ -23,17 +23,40 @@ export function createGbpClient(accessToken: string) {
     },
 
     /**
-     * List all locations for a given account
+     * List all locations for a given account (with pagination)
      */
     async listLocations(accountId: string) {
       const parent = accountId.startsWith("accounts/")
         ? accountId
         : `accounts/${accountId}`
-      const res = await mybusinessbusinessinformation.accounts.locations.list({
-        parent,
-        readMask: "name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,specialHours,categories,profile,metadata,latlng",
-      })
-      return res.data.locations || []
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allLocations: any[] = []
+      let pageToken: string | undefined = undefined
+      let hasMore = true
+
+      while (hasMore) {
+        const params: { parent: string; pageSize: number; readMask: string; pageToken?: string } = {
+          parent,
+          pageSize: 100,
+          readMask: "name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,specialHours,categories,profile,metadata,latlng",
+        }
+        if (pageToken) params.pageToken = pageToken
+
+        const res = await mybusinessbusinessinformation.accounts.locations.list(params)
+
+        if (res.data.locations) {
+          allLocations.push(...res.data.locations)
+        }
+
+        if (res.data.nextPageToken) {
+          pageToken = res.data.nextPageToken
+        } else {
+          hasMore = false
+        }
+      }
+
+      return allLocations
     },
 
     /**
