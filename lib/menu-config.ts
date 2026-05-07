@@ -84,4 +84,9 @@ export const menuConfig: MenuGroup[] = [
     icon: "FileText",
     href: "/memo",
   },
+  {
+    label: "アーカイブ",
+    icon: "Archive",
+    href: "/archive",
+  },
 ]

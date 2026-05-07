@@ -12,6 +12,7 @@ import {
   FileText,
   MapPin,
   Store,
+  Archive,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -28,6 +29,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   FileText,
   MapPin,
   Store,
+  Archive,
 }
 
 export function Sidebar() {
