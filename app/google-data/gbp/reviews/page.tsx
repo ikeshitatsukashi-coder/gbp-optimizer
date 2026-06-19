@@ -18,19 +18,38 @@ interface Review {
   replyDate: string | null
 }
 
-function transformApiReviews(apiData: Record<string, unknown> | null): Review[] {
-  if (!apiData || !Array.isArray((apiData as { reviews?: unknown[] }).reviews)) {
-    return mockReviews
+/**
+ * API 応答からレビュー配列に変換する。
+ * - 応答が来ているなら必ず実データを返す（空配列含む）
+ * - 応答がそもそも無い (null) ときだけモックフォールバック
+ *   → これにより「クチコミが0件の店舗」と「未ログイン/未取得状態」を区別できる
+ */
+function transformApiReviews(apiData: Record<string, unknown> | null): Review[] | null {
+  if (apiData === null || apiData === undefined) {
+    return null // not loaded yet
   }
+  // API responded — even if reviews key is missing or empty, treat as "no reviews"
+  const rawList = (apiData as { reviews?: unknown[] }).reviews
+  const list = Array.isArray(rawList) ? rawList : []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (apiData as any).reviews.map((r: any) => ({
+  return list.map((r: any) => ({
     id: r.reviewId || r.name,
     author: r.reviewer?.displayName || "匿名",
-    rating: parseInt(r.starRating?.replace("STAR_RATING_", "").replace("ONE", "1").replace("TWO", "2").replace("THREE", "3").replace("FOUR", "4").replace("FIVE", "5") || "0"),
+    rating: parseInt(
+      r.starRating
+        ?.replace("STAR_RATING_", "")
+        .replace("ONE", "1")
+        .replace("TWO", "2")
+        .replace("THREE", "3")
+        .replace("FOUR", "4")
+        .replace("FIVE", "5") || "0"
+    ),
     date: r.createTime ? new Date(r.createTime).toLocaleDateString("ja-JP") : "",
     text: r.comment || "",
     reply: r.reviewReply?.comment || null,
-    replyDate: r.reviewReply?.updateTime ? new Date(r.reviewReply.updateTime).toLocaleDateString("ja-JP") : null,
+    replyDate: r.reviewReply?.updateTime
+      ? new Date(r.reviewReply.updateTime).toLocaleDateString("ja-JP")
+      : null,
   }))
 }
 
@@ -43,7 +62,11 @@ export default function ReviewsPage() {
   const { locationName } = useGbp()
 
   const { data: apiReviews, loading, refetch } = useGbpData("reviews", null)
-  const reviews = transformApiReviews(apiReviews)
+  const transformed = transformApiReviews(apiReviews)
+  // null: API 未取得（未ログイン or 店舗未選択）→ デモ用モックを表示
+  // []  : API 取得済みでクチコミ 0 件 → そのまま空状態を表示
+  const isDemo = transformed === null
+  const reviews = transformed ?? mockReviews
 
   const filtered = reviews
     .filter((r) => {
@@ -157,6 +180,25 @@ export default function ReviewsPage() {
         </div>
         <span className="text-sm text-muted-foreground ml-auto">{filtered.length}件</span>
       </div>
+
+      {/* Demo banner: API 未取得時のみ表示（店舗未選択 or 未ログイン） */}
+      {isDemo && !loading && (
+        <div className="mb-4 text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded p-3">
+          デモ表示中（モックデータ）。上部の店舗セレクタで店舗を選択すると実データに切り替わります。
+        </div>
+      )}
+
+      {/* Empty state: API 取得済みでクチコミ0件 */}
+      {!isDemo && !loading && filtered.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-30" />
+          <p className="text-sm">
+            {reviews.length === 0
+              ? "この店舗にはまだクチコミがありません"
+              : "条件に一致するクチコミがありません"}
+          </p>
+        </div>
+      )}
 
       {/* Review List */}
       <div className="space-y-4">

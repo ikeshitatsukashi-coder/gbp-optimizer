@@ -7,6 +7,11 @@ export const menuConfig: MenuGroup[] = [
     href: "/",
   },
   {
+    label: "店舗マスタ",
+    icon: "Building2",
+    href: "/stores",
+  },
+  {
     label: "MEO対策",
     icon: "MapPin",
     children: [

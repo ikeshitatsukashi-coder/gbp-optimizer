@@ -1,336 +1,410 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Star, AlertTriangle, Flag, Loader2, Shield, ShieldOff } from "lucide-react"
-import { useGbpData } from "@/lib/use-gbp-data"
-import { useGbp } from "@/lib/store"
-import { reviewsList as mockReviews } from "@/lib/mock-data"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import {
+  Star,
+  AlertTriangle,
+  Flag,
+  Loader2,
+  RefreshCw,
+  Search,
+  CheckSquare,
+  Square,
+  XCircle,
+} from "lucide-react"
 
-interface Review {
-  id: string
-  author: string
-  rating: number
-  date: string
-  text: string
-  reply: string | null
+interface Candidate {
+  reviewName: string
+  locationName: string
+  storeName: string
+  reviewer: string | null
+  starRating: number | null
+  comment: string | null
+  createTime: string | null
+  lastFlaggedAt: string | null
 }
 
-function transformApiReviews(apiData: Record<string, unknown> | null): Review[] {
-  if (!apiData || !Array.isArray((apiData as { reviews?: unknown[] }).reviews)) {
-    return mockReviews.map((r) => ({
-      id: r.id,
-      author: r.author,
-      rating: r.rating,
-      date: r.date,
-      text: r.text,
-      reply: r.reply,
-    }))
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (apiData as any).reviews.map((r: any) => ({
-    id: r.reviewId || r.name,
-    author: r.reviewer?.displayName || "匿名",
-    rating: parseInt(
-      r.starRating
-        ?.replace("STAR_RATING_", "")
-        .replace("ONE", "1")
-        .replace("TWO", "2")
-        .replace("THREE", "3")
-        .replace("FOUR", "4")
-        .replace("FIVE", "5") || "0"
-    ),
-    date: r.createTime ? new Date(r.createTime).toLocaleDateString("ja-JP") : "",
-    text: r.comment || "",
-    reply: r.reviewReply?.comment || null,
-  }))
+interface SyncResult {
+  stores: number
+  reviewsFetched: number
+  markedDeleted: number
+  errors: { locationName: string; error: string }[]
+  durationMs: number
 }
 
-export default function ReviewFlagPage() {
-  const [autoFlagEnabled, setAutoFlagEnabled] = useState(false)
-  const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set())
-  const [flagging, setFlagging] = useState<string | null>(null)
-  const [flaggingAll, setFlaggingAll] = useState(false)
-  const { locationName } = useGbp()
+interface FlagResult {
+  reviewName: string
+  status: "submitted" | "already_reported" | "failed"
+  errorMessage?: string
+}
 
-  const { data: apiReviews, loading } = useGbpData("reviews", null)
-  const allReviews = transformApiReviews(apiReviews)
+interface BatchResponse {
+  results: FlagResult[]
+  submitted: number
+  failed: number
+  alreadyReported: number
+}
 
-  // Target reviews: rating <= 2 AND has comment text
-  const targetReviews = allReviews.filter(
-    (r) => r.rating <= 2 && r.text && r.text.trim().length > 0
-  )
+function formatDate(iso: string | null): string {
+  if (!iso) return "—"
+  return new Date(iso).toLocaleDateString("ja-JP")
+}
 
-  const nonTargetLowReviews = allReviews.filter(
-    (r) => r.rating <= 2 && (!r.text || r.text.trim().length === 0)
-  )
+export default function ReviewFlagBatchPage() {
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [flagging, setFlagging] = useState(false)
+  const [search, setSearch] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [lastSync, setLastSync] = useState<SyncResult | null>(null)
+  const [lastBatch, setLastBatch] = useState<BatchResponse | null>(null)
+  const [enabled, setEnabled] = useState(false) // ON/OFF トグル（オン=候補表示）
 
-  // Load saved state
-  useEffect(() => {
-    const saved = localStorage.getItem("gbp-auto-flag-enabled")
-    if (saved === "true") setAutoFlagEnabled(true)
-    const savedFlagged = localStorage.getItem("gbp-flagged-reviews")
-    if (savedFlagged) setFlaggedIds(new Set(JSON.parse(savedFlagged)))
-  }, [])
-
-  // Save state
-  useEffect(() => {
-    localStorage.setItem("gbp-auto-flag-enabled", String(autoFlagEnabled))
-  }, [autoFlagEnabled])
-
-  useEffect(() => {
-    localStorage.setItem("gbp-flagged-reviews", JSON.stringify([...flaggedIds]))
-  }, [flaggedIds])
-
-  // Auto-flag when enabled and new target reviews appear
-  useEffect(() => {
-    if (!autoFlagEnabled || !locationName || targetReviews.length === 0) return
-
-    const unflagged = targetReviews.filter((r) => !flaggedIds.has(r.id))
-    if (unflagged.length > 0) {
-      handleFlagAll()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoFlagEnabled, targetReviews.length])
-
-  const handleFlag = async (review: Review) => {
-    if (!locationName) return
-    setFlagging(review.id)
+  const fetchCandidates = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const res = await fetch("/api/gbp/reviews/flag", {
+      const params = new URLSearchParams()
+      if (search.trim()) params.set("storeFilter", search.trim())
+      const res = await fetch(`/api/reviews/candidates?${params.toString()}`)
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setCandidates(j.candidates)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [search])
+
+  useEffect(() => {
+    if (enabled) fetchCandidates()
+  }, [enabled, fetchCandidates])
+
+  const handleSync = async () => {
+    setSyncing(true)
+    setError(null)
+    setLastSync(null)
+    try {
+      const res = await fetch("/api/reviews/sync", { method: "POST" })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setLastSync(j.result)
+      if (enabled) await fetchCandidates()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const toggleOne = (reviewName: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(reviewName)) next.delete(reviewName)
+      else next.add(reviewName)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    setSelected((prev) =>
+      prev.size === candidates.length ? new Set() : new Set(candidates.map((c) => c.reviewName))
+    )
+  }
+
+  const handleBatchFlag = async () => {
+    if (selected.size === 0) return
+    if (
+      !confirm(
+        `${selected.size} 件のクチコミに削除申請を送信します。\n\n` +
+          `この操作は Google に正式な報告として送信されます。本当に実行しますか？`
+      )
+    )
+      return
+
+    setFlagging(true)
+    setError(null)
+    setLastBatch(null)
+    try {
+      const reviewNames = Array.from(selected)
+      const res = await fetch("/api/reviews/flag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reviewName: `${locationName}/reviews/${review.id}`,
-        }),
+        body: JSON.stringify({ reviewNames, concurrency: 3, delayMs: 500 }),
       })
-      if (res.ok) {
-        setFlaggedIds((prev) => new Set([...prev, review.id]))
-      } else {
-        // In mock mode, still mark as flagged for UI demo
-        setFlaggedIds((prev) => new Set([...prev, review.id]))
-      }
-    } catch {
-      // In mock mode, still mark as flagged for UI demo
-      setFlaggedIds((prev) => new Set([...prev, review.id]))
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setLastBatch(j)
+      setSelected(new Set())
+      await fetchCandidates()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
-      setFlagging(null)
+      setFlagging(false)
     }
   }
 
-  const handleFlagAll = async () => {
-    setFlaggingAll(true)
-    const unflagged = targetReviews.filter((r) => !flaggedIds.has(r.id))
-    for (const review of unflagged) {
-      await handleFlag(review)
+  const byStore = useMemo(() => {
+    const m = new Map<string, Candidate[]>()
+    for (const c of candidates) {
+      if (!m.has(c.storeName)) m.set(c.storeName, [])
+      m.get(c.storeName)!.push(c)
     }
-    setFlaggingAll(false)
-  }
-
-  const toggleAutoFlag = () => {
-    setAutoFlagEnabled(!autoFlagEnabled)
-  }
-
-  const flaggedCount = targetReviews.filter((r) => flaggedIds.has(r.id)).length
-  const unflaggedCount = targetReviews.length - flaggedCount
+    return m
+  }, [candidates])
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">低評価クチコミ削除申請</h1>
-
-      {/* Auto Flag Toggle */}
-      <Card className="mb-6">
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {autoFlagEnabled ? (
-                <Shield className="h-6 w-6 text-green-500" />
-              ) : (
-                <ShieldOff className="h-6 w-6 text-gray-400" />
-              )}
-              <div>
-                <h3 className="font-bold text-base">自動削除申請</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  星2つ以下 ＋ コメント付きのクチコミを自動的にGoogleへ削除申請します
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={toggleAutoFlag}
-              className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors ${
-                autoFlagEnabled ? "bg-green-500" : "bg-gray-300"
-              }`}
-            >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                  autoFlagEnabled ? "translate-x-8" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
-
-          {autoFlagEnabled && (
-            <div className="mt-3 bg-green-50 border border-green-200 rounded p-3 text-sm text-green-800">
-              自動削除申請が<strong>有効</strong>です。条件に合致するクチコミが検出されると自動的にGoogleへ削除申請を送信します。
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Conditions */}
-      <Card className="mb-6">
-        <CardContent className="p-5">
-          <h3 className="font-bold text-sm mb-3">削除申請の対象条件</h3>
-          <div className="flex gap-6">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-red-500 rounded-full" />
-              <span className="text-sm">星2つ以下の評価</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-red-500 rounded-full" />
-              <span className="text-sm">コメントが付いている</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-blue-500 rounded-full" />
-              <span className="text-sm">ステータスが運用中</span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            ※ Googleの審査により、ポリシー違反が認められた場合のみ削除されます。全てのクチコミが削除されるわけではありません。
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Flag className="h-6 w-6" />
+            低評価クチコミ削除申請（バッチ）
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            運用中の全店舗から「星 2 以下 ＋ コメント付き」のクチコミを抽出し、選択して一括で削除申請を送信します。
           </p>
-        </CardContent>
-      </Card>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground mb-1">対象クチコミ</p>
-            <span className="text-2xl font-bold text-red-600">{targetReviews.length}件</span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground mb-1">申請済み</p>
-            <span className="text-2xl font-bold text-green-600">{flaggedCount}件</span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground mb-1">未申請</p>
-            <span className="text-2xl font-bold text-orange-600">{unflaggedCount}件</span>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <p className="text-xs text-muted-foreground mb-1">対象外（コメントなし）</p>
-            <span className="text-2xl font-bold text-gray-400">{nonTargetLowReviews.length}件</span>
-          </CardContent>
-        </Card>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleSync}
+            disabled={syncing}
+            variant="outline"
+            size="lg"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "全店舗クチコミ取得中…" : "全店舗クチコミ取得"}
+          </Button>
+        </div>
       </div>
 
-      {/* Manual Flag All Button */}
-      {unflaggedCount > 0 && !autoFlagEnabled && (
-        <div className="mb-4">
+      {/* ON/OFF master toggle */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">削除申請バッチ機能</span>
+              <span
+                className={`text-xs px-2 py-0.5 rounded ${enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}
+              >
+                {enabled ? "ON" : "OFF"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              ON にすると候補リストを表示し、選択して削除申請を実行できます。OFF の状態では候補取得を行いません。
+            </p>
+          </div>
           <button
-            onClick={handleFlagAll}
-            disabled={flaggingAll}
-            className="flex items-center gap-1.5 bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 disabled:opacity-50"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() => setEnabled(!enabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              enabled ? "bg-green-600" : "bg-gray-300"
+            }`}
           >
-            {flaggingAll ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Flag className="h-4 w-4" />
-            )}
-            未申請{unflaggedCount}件を一括削除申請
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                enabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
           </button>
         </div>
+      </Card>
+
+      {error && (
+        <Card className="p-4 bg-red-50 border-red-200 flex items-start gap-2">
+          <XCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-red-800">{error}</p>
+        </Card>
       )}
 
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-          <Loader2 className="h-4 w-4 animate-spin" /> データを取得中...
-        </div>
-      )}
-
-      {/* Target Review List */}
-      <div className="space-y-3">
-        {targetReviews.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <Shield className="h-12 w-12 text-green-500 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">
-                現在、削除申請の対象となるクチコミはありません。
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          targetReviews.map((review) => {
-            const isFlagged = flaggedIds.has(review.id)
-            return (
-              <Card
-                key={review.id}
-                className={isFlagged ? "border-green-200 bg-green-50/30" : "border-red-200"}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{review.author}</span>
-                        <span className="text-xs text-muted-foreground">{review.date}</span>
-                        <div className="flex items-center gap-0.5">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-3 w-3 ${
-                                i < review.rating
-                                  ? "fill-yellow-400 text-yellow-400"
-                                  : "text-gray-300"
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      <p className="text-sm">{review.text}</p>
-                    </div>
-                    <div className="ml-4 shrink-0">
-                      {isFlagged ? (
-                        <span className="flex items-center gap-1 text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded">
-                          <Flag className="h-3 w-3" /> 申請済み
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleFlag(review)}
-                          disabled={flagging === review.id}
-                          className="flex items-center gap-1 text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded hover:bg-red-200 disabled:opacity-50"
-                        >
-                          {flagging === review.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Flag className="h-3 w-3" />
-                          )}
-                          削除申請
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })
-        )}
-      </div>
-
-      {/* Non-target low reviews info */}
-      {nonTargetLowReviews.length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">
-            対象外の低評価クチコミ（コメントなし）— {nonTargetLowReviews.length}件
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            星2つ以下ですがコメントが付いていないため、削除申請の対象外です。
+      {lastSync && (
+        <Card className="p-4 bg-blue-50 border-blue-200">
+          <p className="text-sm text-blue-900">
+            <strong>クチコミ同期完了</strong>（{(lastSync.durationMs / 1000).toFixed(1)}
+            秒）: 店舗 {lastSync.stores} 件 / クチコミ取得 {lastSync.reviewsFetched} 件 / 削除検知{" "}
+            {lastSync.markedDeleted} 件
+            {lastSync.errors.length > 0 && (
+              <span className="text-red-700"> / エラー {lastSync.errors.length} 件</span>
+            )}
           </p>
-        </div>
+        </Card>
+      )}
+
+      {lastBatch && (
+        <Card className="p-4 bg-green-50 border-green-200">
+          <p className="text-sm text-green-900">
+            <strong>申請完了</strong>: 送信成功 {lastBatch.submitted} 件 / 既報告{" "}
+            {lastBatch.alreadyReported} 件 / 失敗 {lastBatch.failed} 件
+          </p>
+          {lastBatch.failed > 0 && (
+            <details className="mt-2">
+              <summary className="text-xs cursor-pointer text-green-800">失敗詳細を表示</summary>
+              <ul className="mt-2 space-y-1 text-xs text-red-700">
+                {lastBatch.results
+                  .filter((r) => r.status === "failed")
+                  .slice(0, 20)
+                  .map((r) => (
+                    <li key={r.reviewName} className="font-mono">
+                      {r.reviewName.slice(-20)}: {r.errorMessage}
+                    </li>
+                  ))}
+              </ul>
+            </details>
+          )}
+        </Card>
+      )}
+
+      {enabled && (
+        <>
+          {/* Summary + Search + Actions */}
+          <Card className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <div>
+                <div className="text-xs text-muted-foreground">候補件数</div>
+                <div className="text-2xl font-bold mt-1">{candidates.length}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">対象店舗数</div>
+                <div className="text-2xl font-bold mt-1">{byStore.size}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">選択中</div>
+                <div className="text-2xl font-bold mt-1 text-blue-700">{selected.size}</div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">
+                  店舗名で絞り込み
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="例: 株式会社LIGO"
+                    className="w-full h-8 pl-7 pr-2 text-sm border rounded bg-background"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-4">
+              <Button
+                onClick={toggleAll}
+                variant="outline"
+                size="sm"
+                disabled={candidates.length === 0}
+              >
+                {selected.size === candidates.length && candidates.length > 0 ? (
+                  <>
+                    <CheckSquare className="h-3.5 w-3.5" />
+                    全解除
+                  </>
+                ) : (
+                  <>
+                    <Square className="h-3.5 w-3.5" />
+                    全選択
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleBatchFlag}
+                disabled={selected.size === 0 || flagging}
+                variant="destructive"
+                size="sm"
+              >
+                {flagging ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    送信中…
+                  </>
+                ) : (
+                  <>
+                    <Flag className="h-3.5 w-3.5" />
+                    選択した {selected.size} 件に削除申請
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
+
+          {/* Candidates list */}
+          <Card className="overflow-hidden">
+            {loading ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                候補を読み込み中…
+              </div>
+            ) : candidates.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <AlertTriangle className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-medium">該当するクチコミがありません</p>
+                <p className="text-xs mt-1">
+                  まずは右上の「全店舗クチコミ取得」を実行してから再確認してください。
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {Array.from(byStore.entries()).map(([storeName, items]) => (
+                  <div key={storeName}>
+                    <div className="bg-muted/50 px-4 py-2 text-xs font-medium flex items-center justify-between">
+                      <span>{storeName}</span>
+                      <span className="text-muted-foreground">{items.length} 件</span>
+                    </div>
+                    {items.map((c) => (
+                      <label
+                        key={c.reviewName}
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 cursor-pointer border-t"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected.has(c.reviewName)}
+                          onChange={() => toggleOne(c.reviewName)}
+                          className="mt-1 h-4 w-4 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-1">
+                            <div className="flex items-center gap-0.5">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <Star
+                                  key={i}
+                                  className={`h-3.5 w-3.5 ${
+                                    i < (c.starRating ?? 0)
+                                      ? "fill-yellow-400 text-yellow-400"
+                                      : "text-gray-300"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-xs font-medium">{c.reviewer ?? "匿名"}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatDate(c.createTime)}
+                            </span>
+                            {c.lastFlaggedAt && (
+                              <span className="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">
+                                前回申請: {formatDate(c.lastFlaggedAt)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <p className="text-xs text-muted-foreground">
+            ※ 申請は Google に正式な「ポリシー違反の報告」として送られます。送信履歴は flag_history テーブルに記録され、14日間は同じレビューを再申請しません（クールダウン）。
+          </p>
+        </>
       )}
     </div>
   )

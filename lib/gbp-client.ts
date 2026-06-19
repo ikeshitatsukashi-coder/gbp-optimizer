@@ -107,18 +107,38 @@ export function createGmbClient(accessToken: string) {
     return res.json()
   }
 
+  /**
+   * v4 API は `accounts/{accountId}/locations/{locationId}/...` 形式の path を要求する。
+   * locationName 単体（`locations/{id}`）では 404 になるため、accountName と組み合わせて完全な path を作る。
+   */
+  function buildV4Path(accountName: string, locationName: string, suffix: string): string {
+    const account = accountName.startsWith("accounts/")
+      ? accountName
+      : `accounts/${accountName}`
+    const location = locationName.startsWith("locations/")
+      ? locationName
+      : `locations/${locationName}`
+    return `/${account}/${location}/${suffix}`
+  }
+
   return {
     /**
-     * List reviews for a location
+     * List reviews for a location (v4 requires accounts/.../locations/.../reviews)
      */
-    async listReviews(locationName: string, pageSize = 50, pageToken?: string) {
+    async listReviews(
+      accountName: string,
+      locationName: string,
+      pageSize = 50,
+      pageToken?: string
+    ) {
       const params = new URLSearchParams({ pageSize: String(pageSize) })
       if (pageToken) params.set("pageToken", pageToken)
-      return fetchApi(`/${locationName}/reviews?${params}`)
+      return fetchApi(`${buildV4Path(accountName, locationName, "reviews")}?${params}`)
     },
 
     /**
      * Reply to a review
+     * reviewName is the full resource name: accounts/.../locations/.../reviews/{reviewId}
      */
     async replyToReview(reviewName: string, comment: string) {
       return fetchApi(`/${reviewName}/reply`, {
@@ -167,27 +187,31 @@ export function createGmbClient(accessToken: string) {
     },
 
     /**
-     * List local posts
+     * List local posts (v4)
      */
-    async listPosts(locationName: string) {
-      return fetchApi(`/${locationName}/localPosts`)
+    async listPosts(accountName: string, locationName: string) {
+      return fetchApi(buildV4Path(accountName, locationName, "localPosts"))
     },
 
     /**
-     * Create a local post
+     * Create a local post (v4)
      */
-    async createPost(locationName: string, post: Record<string, unknown>) {
-      return fetchApi(`/${locationName}/localPosts`, {
+    async createPost(
+      accountName: string,
+      locationName: string,
+      post: Record<string, unknown>
+    ) {
+      return fetchApi(buildV4Path(accountName, locationName, "localPosts"), {
         method: "POST",
         body: JSON.stringify(post),
       })
     },
 
     /**
-     * List media items (photos/videos)
+     * List media items (photos/videos) (v4)
      */
-    async listMedia(locationName: string) {
-      return fetchApi(`/${locationName}/media`)
+    async listMedia(accountName: string, locationName: string) {
+      return fetchApi(buildV4Path(accountName, locationName, "media"))
     },
   }
 }

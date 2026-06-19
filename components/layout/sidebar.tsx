@@ -12,6 +12,7 @@ import {
   FileText,
   MapPin,
   Store,
+  Building2,
   Archive,
   ChevronDown,
   ChevronLeft,
@@ -29,6 +30,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   FileText,
   MapPin,
   Store,
+  Building2,
   Archive,
 }
 
