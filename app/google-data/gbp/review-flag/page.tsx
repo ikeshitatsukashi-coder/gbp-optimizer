@@ -13,6 +13,7 @@ import {
   CheckSquare,
   Square,
   XCircle,
+  Ban,
 } from "lucide-react"
 
 interface Candidate {
@@ -115,6 +116,36 @@ export default function ReviewFlagBatchPage() {
     setSelected((prev) =>
       prev.size === candidates.length ? new Set() : new Set(candidates.map((c) => c.reviewName))
     )
+  }
+
+  const handleExclude = async (reviewName: string) => {
+    const reason = prompt(
+      "除外理由（任意）:\n例: クレーマー、過去対応済み 等",
+      ""
+    )
+    if (reason === null) return
+    try {
+      const res = await fetch("/api/reviews/exclusions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reviewName,
+          excludeAutoReply: false,
+          excludeAutoFlag: true,
+          reason: reason.trim() || null,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+      setCandidates((prev) => prev.filter((c) => c.reviewName !== reviewName))
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(reviewName)
+        return next
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   const handleBatchFlag = async () => {
@@ -357,9 +388,9 @@ export default function ReviewFlagBatchPage() {
                       <span className="text-muted-foreground">{items.length} 件</span>
                     </div>
                     {items.map((c) => (
-                      <label
+                      <div
                         key={c.reviewName}
-                        className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 cursor-pointer border-t"
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 border-t"
                       >
                         <input
                           type="checkbox"
@@ -368,7 +399,7 @@ export default function ReviewFlagBatchPage() {
                           className="mt-1 h-4 w-4 cursor-pointer"
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-1">
+                          <div className="flex items-center gap-3 mb-1 flex-wrap">
                             <div className="flex items-center gap-0.5">
                               {Array.from({ length: 5 }).map((_, i) => (
                                 <Star
@@ -390,10 +421,18 @@ export default function ReviewFlagBatchPage() {
                                 前回申請: {formatDate(c.lastFlaggedAt)}
                               </span>
                             )}
+                            <button
+                              onClick={() => handleExclude(c.reviewName)}
+                              className="ml-auto text-xs text-gray-500 hover:text-red-600 flex items-center gap-1 px-2 py-0.5 rounded hover:bg-gray-100"
+                              title="このレビューを削除申請から除外"
+                            >
+                              <Ban className="h-3 w-3" />
+                              除外
+                            </button>
                           </div>
                           <p className="text-sm whitespace-pre-wrap">{c.comment}</p>
                         </div>
-                      </label>
+                      </div>
                     ))}
                   </div>
                 ))}

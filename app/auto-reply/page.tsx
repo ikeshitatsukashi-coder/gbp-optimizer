@@ -14,6 +14,7 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  Ban,
 } from "lucide-react"
 
 interface Candidate {
@@ -211,6 +212,42 @@ export default function AutoReplyPage() {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setPosting(false)
+    }
+  }
+
+  const handleExclude = async (reviewName: string) => {
+    const reason = prompt(
+      "除外理由（任意）:\n例: クレーマー、過去対応済み 等",
+      ""
+    )
+    if (reason === null) return // canceled
+    try {
+      const res = await fetch("/api/reviews/exclusions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reviewName,
+          excludeAutoReply: true,
+          excludeAutoFlag: false,
+          reason: reason.trim() || null,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+      // 候補から除去
+      setCandidates((prev) => prev.filter((c) => c.reviewName !== reviewName))
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(reviewName)
+        return next
+      })
+      setDrafts((prev) => {
+        const next = { ...prev }
+        delete next[reviewName]
+        return next
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -440,26 +477,37 @@ export default function AutoReplyPage() {
 
                 {/* Reply draft */}
                 <div className="ml-7 space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-medium text-muted-foreground">返信案</span>
-                    <Button
-                      onClick={() => generateOne(c.reviewName)}
-                      disabled={isGen}
-                      variant={draft ? "outline" : "default"}
-                      size="xs"
-                    >
-                      {isGen ? (
-                        <>
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          生成中…
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3 w-3" />
-                          {draft ? "再生成" : "返信案を生成"}
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        onClick={() => handleExclude(c.reviewName)}
+                        variant="ghost"
+                        size="xs"
+                        title="このレビューを自動返信から除外"
+                      >
+                        <Ban className="h-3 w-3" />
+                        除外
+                      </Button>
+                      <Button
+                        onClick={() => generateOne(c.reviewName)}
+                        disabled={isGen}
+                        variant={draft ? "outline" : "default"}
+                        size="xs"
+                      >
+                        {isGen ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            生成中…
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3 w-3" />
+                            {draft ? "再生成" : "返信案を生成"}
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                   <textarea
                     value={draft}
