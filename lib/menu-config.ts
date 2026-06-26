@@ -49,4 +49,9 @@ export const menuConfig: MenuGroup[] = [
     icon: "Bot",
     href: "/auto-reply",
   },
+  {
+    label: "投稿スケジューラ",
+    icon: "Calendar",
+    href: "/scheduled-posts",
+  },
 ]
