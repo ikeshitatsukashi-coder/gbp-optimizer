@@ -13,7 +13,10 @@ export const menuConfig: MenuGroup[] = [
   {
     label: "店舗マスタ",
     icon: "Building2",
-    href: "/stores",
+    children: [
+      { label: "店舗一覧", href: "/stores" },
+      { label: "業種一括マッピング", href: "/stores/industry-mapping" },
+    ],
   },
   {
     label: "Googleインサイト",
