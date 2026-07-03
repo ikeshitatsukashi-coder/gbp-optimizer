@@ -45,6 +45,15 @@ export const menuConfig: MenuGroup[] = [
     ],
   },
   {
+    label: "MEO強化",
+    icon: "MapPin",
+    children: [
+      { label: "GBP最適化診断", href: "/meo/diagnosis" },
+      { label: "投稿最適化", href: "/meo/post-optimization" },
+      { label: "写真最適化ガイド", href: "/meo/photo-guide" },
+    ],
+  },
+  {
     label: "自動返信バッチ",
     icon: "Bot",
     href: "/auto-reply",
