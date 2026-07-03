@@ -96,6 +96,7 @@ export async function POST(request: Request) {
     summary?: string
     postType?: string
     mediaUrl?: string
+    mediaUrls?: string[]
     callToAction?: { actionType: string; url: string }
   }
   try {
@@ -133,7 +134,12 @@ export async function POST(request: Request) {
         scheduledFor: scheduledDate,
         postType: body.postType ?? "STANDARD",
         summary: body.summary.trim(),
-        mediaUrls: body.mediaUrl ? [body.mediaUrl] : null,
+        mediaUrls:
+          body.mediaUrls && body.mediaUrls.length > 0
+            ? body.mediaUrls
+            : body.mediaUrl
+              ? [body.mediaUrl]
+              : null,
         callToAction: body.callToAction ?? null,
         status: "pending",
       })

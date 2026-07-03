@@ -202,7 +202,7 @@ export default function ScheduledPostsPage() {
             自動投稿スケジューラ
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            未来の日時を指定して投稿を予約。期日が来ると 15 分以内に自動投稿されます。
+            未来の日時を指定して投稿を予約。自動実行は1日1回。すぐ反映したい場合は「期日到来分を今すぐ実行」をご利用ください。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -477,7 +477,7 @@ export default function ScheduledPostsPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        ※ 自動実行は 15 分おきの cron で動作します。Cron 経由で投稿するには `CRON_OAUTH_TOKEN` の設定が必要です。手動でも「期日到来分を今すぐ実行」ボタンで即時実行できます。
+        ※ 自動実行は1日1回の cron で動作します（Vercel Hobbyプランの制限に合わせています）。Cron 経由で投稿するには `CRON_OAUTH_TOKEN` の設定が必要です。手動でも「期日到来分を今すぐ実行」ボタンで即時実行できます。
       </p>
     </div>
   )
