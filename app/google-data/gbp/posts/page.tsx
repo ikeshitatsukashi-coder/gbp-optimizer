@@ -541,114 +541,108 @@ export default function PostsPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Table — 高密度: 1行36pxで10行以上一度に見える */}
       <div className="border border-gray-200 rounded bg-white overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-[13px] text-gray-600 border-b">
-              <tr>
-                <th className="w-8 px-2 py-3"></th>
-                <th className="text-left px-3 py-3 font-normal">NO</th>
-                <th className="text-left px-3 py-3 font-normal">画像</th>
-                <th className="text-left px-3 py-3 font-normal whitespace-nowrap">投稿種類</th>
-                <th className="text-left px-3 py-3 font-normal">
-                  タイ<br />トル
-                </th>
-                <th className="text-left px-3 py-3 font-normal whitespace-nowrap">入力日</th>
-                <th className="text-left px-3 py-3 font-normal">店舗名</th>
-                <th className="text-left px-3 py-3 font-normal whitespace-nowrap">投稿日時</th>
-                <th className="text-left px-3 py-3 font-normal">
-                  開始<br />日時
-                </th>
-                <th className="text-left px-3 py-3 font-normal whitespace-nowrap">繰り返し</th>
-                <th className="text-left px-3 py-3 font-normal">
-                  繰り返し次回投<br />稿日時
-                </th>
-                <th className="text-left px-3 py-3 font-normal">ステータス</th>
-                <th className="text-left px-3 py-3 font-normal">WF承認</th>
-                <th className="text-left px-3 py-3 font-normal">複製</th>
-                <th className="text-left px-3 py-3 font-normal">詳細</th>
+          <table className="w-full text-[12px]">
+            <thead className="bg-gray-50 text-[11px] text-gray-600 border-b">
+              <tr className="h-9">
+                <th className="w-7 px-1.5"></th>
+                <th className="text-left px-2 font-normal w-10">NO</th>
+                <th className="text-left px-2 font-normal w-12">画像</th>
+                <th className="text-left px-2 font-normal whitespace-nowrap">投稿種類</th>
+                <th className="text-left px-2 font-normal">タイトル</th>
+                <th className="text-left px-2 font-normal whitespace-nowrap">入力日</th>
+                <th className="text-left px-2 font-normal">店舗名</th>
+                <th className="text-left px-2 font-normal whitespace-nowrap">投稿日時</th>
+                <th className="text-left px-2 font-normal whitespace-nowrap">開始日時</th>
+                <th className="text-left px-2 font-normal whitespace-nowrap">繰り返し</th>
+                <th className="text-left px-2 font-normal whitespace-nowrap">次回投稿</th>
+                <th className="text-left px-2 font-normal">ステータス</th>
+                <th className="text-left px-2 font-normal">WF承認</th>
+                <th className="text-left px-2 font-normal">複製</th>
+                <th className="text-left px-2 font-normal w-10">詳細</th>
               </tr>
             </thead>
             <tbody>
               {paginatedRows.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={15} className="text-center py-12 text-muted-foreground text-sm">
+                  <td colSpan={15} className="text-center py-10 text-muted-foreground text-sm">
                     投稿がありません
                   </td>
                 </tr>
               )}
               {paginatedRows.map((r) => (
-                <tr key={r.key} className="border-t hover:bg-gray-50">
-                  <td className="px-2 py-2 text-center">
+                <tr key={r.key} className="border-t hover:bg-gray-50 h-9">
+                  <td className="px-1.5 text-center">
                     {r.source === "scheduled" ? (
                       <input
                         type="checkbox"
                         checked={selected.has(r.key)}
                         onChange={() => toggleSelected(r.key)}
-                        className="h-3.5 w-3.5"
+                        className="h-3 w-3"
                       />
                     ) : null}
                   </td>
-                  <td className="px-3 py-2 text-sm">{r.no}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 text-gray-500">{r.no}</td>
+                  <td className="px-2 py-1">
                     {r.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={r.imageUrl}
                         alt=""
-                        className="w-14 h-14 rounded object-cover"
+                        className="w-7 h-7 rounded-sm object-cover"
                       />
                     ) : (
-                      <div className="w-14 h-14 rounded bg-gray-100 flex items-center justify-center">
-                        <ImageIcon className="h-4 w-4 text-gray-400" />
+                      <div className="w-7 h-7 rounded-sm bg-gray-100 flex items-center justify-center">
+                        <ImageIcon className="h-3 w-3 text-gray-400" />
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-sm whitespace-nowrap">
+                  <td className="px-2 whitespace-nowrap">
                     {POST_TYPE_LABELS[r.postType] ?? r.postType}
                   </td>
-                  <td className="px-3 py-2 text-sm max-w-[140px]">
+                  <td className="px-2 max-w-[180px]">
                     <div className="truncate" title={r.title}>
                       {r.title || "—"}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap">
+                  <td className="px-2 text-gray-600 whitespace-nowrap">
                     {formatDateTime(r.inputDate)}
                   </td>
-                  <td className="px-3 py-2 text-sm max-w-[120px]">
+                  <td className="px-2 max-w-[140px]">
                     <div className="truncate" title={r.storeName}>
                       {r.storeName}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap">
+                  <td className="px-2 text-gray-600 whitespace-nowrap">
                     {formatDateTime(r.scheduledFor)}
                   </td>
-                  <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                  <td className="px-3 py-2 text-xs text-gray-500">—</td>
-                  <td className="px-3 py-2 text-xs text-gray-500">—</td>
+                  <td className="px-2 text-gray-400">—</td>
+                  <td className="px-2 text-gray-400">—</td>
+                  <td className="px-2 text-gray-400">—</td>
                   <td
-                    className={`px-3 py-2 text-sm whitespace-nowrap ${STATUS_COLORS[r.status] ?? "text-gray-700"}`}
+                    className={`px-2 whitespace-nowrap ${STATUS_COLORS[r.status] ?? "text-gray-700"}`}
                   >
                     {STATUS_LABELS[r.status] ?? r.status}
                   </td>
-                  <td className="px-3 py-2 text-sm text-gray-500">{r.wfApproval}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 text-gray-500">{r.wfApproval}</td>
+                  <td className="px-2">
                     <button
                       onClick={() => openDuplicate(r)}
-                      className="text-sm text-[#4a90e2] border border-gray-300 rounded px-3 py-1 hover:bg-blue-50"
+                      className="text-[11px] text-[#4a90e2] border border-gray-300 rounded px-2 py-0.5 hover:bg-blue-50"
                     >
                       複製
                     </button>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2">
                     {r.source === "scheduled" ? (
                       <Link
                         href={`/scheduled-posts?highlight=${r.scheduledId}`}
                         className="text-gray-400 hover:text-gray-700 inline-block"
                         title="詳細"
                       >
-                        <Edit3 className="h-4 w-4" />
+                        <Edit3 className="h-3.5 w-3.5" />
                       </Link>
                     ) : r.searchUrl ? (
                       <a
@@ -658,11 +652,11 @@ export default function PostsPage() {
                         className="text-gray-400 hover:text-gray-700 inline-block"
                         title="Google で表示"
                       >
-                        <Edit3 className="h-4 w-4" />
+                        <Edit3 className="h-3.5 w-3.5" />
                       </a>
                     ) : (
                       <span className="text-gray-300">
-                        <Edit3 className="h-4 w-4" />
+                        <Edit3 className="h-3.5 w-3.5" />
                       </span>
                     )}
                   </td>
