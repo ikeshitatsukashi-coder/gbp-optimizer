@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import {
   Loader2,
@@ -11,7 +12,11 @@ import {
   AlertTriangle,
   X,
   RefreshCw,
+  ArrowRight,
+  Sparkles,
+  Copy,
 } from "lucide-react"
+import { useGbp } from "@/lib/store"
 
 interface QuickStore {
   locationName: string
@@ -65,7 +70,30 @@ function scoreBadgeClass(score: number): string {
   return "bg-red-100 text-red-700"
 }
 
+/**
+ * 診断項目 → このツール内の修正ページへのマッピング。
+ * 「診断して終わり」にしない: 各未達成項目からワンクリックで修正画面に飛ぶ。
+ */
+const FIX_ACTIONS: Record<string, { href: string; label: string }> = {
+  phone: { href: "/google-data/gbp/basic-info", label: "基本情報で電話番号を設定" },
+  address: { href: "/google-data/gbp/basic-info", label: "基本情報で住所を設定" },
+  website: { href: "/google-data/gbp/basic-info", label: "基本情報でサイトURLを設定" },
+  hours: { href: "/google-data/gbp/basic-info", label: "基本情報で営業時間を設定" },
+  description: { href: "/google-data/gbp/basic-info", label: "基本情報で説明文を編集" },
+  category: { href: "/google-data/gbp/basic-info", label: "基本情報でカテゴリを確認" },
+  additional_categories: {
+    href: "/google-data/gbp/basic-info",
+    label: "基本情報でカテゴリを確認",
+  },
+  photos: { href: "/google-data/gbp/photos", label: "写真管理で写真を追加" },
+  post_recency: { href: "/google-data/gbp/posts", label: "投稿を作成する" },
+  reply_rate: { href: "/auto-reply", label: "自動返信バッチで返信する" },
+  low_reviews: { href: "/google-data/gbp/reviews", label: "クチコミ管理で返信する" },
+}
+
 export default function MeoDiagnosisPage() {
+  const router = useRouter()
+  const { setLocationName } = useGbp()
   const [stores, setStores] = useState<QuickStore[]>([])
   const [summary, setSummary] = useState({
     total: 0,
@@ -83,6 +111,46 @@ export default function MeoDiagnosisPage() {
   const [deepTarget, setDeepTarget] = useState<string | null>(null)
   const [deepResult, setDeepResult] = useState<DeepResult | null>(null)
   const [deepLoading, setDeepLoading] = useState(false)
+
+  // AI 説明文生成
+  const [genLoading, setGenLoading] = useState(false)
+  const [genText, setGenText] = useState<string | null>(null)
+  const [genError, setGenError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  /** 診断対象の店舗をグローバル店舗セレクタに設定してから修正ページへ遷移 */
+  const goFix = (href: string) => {
+    if (deepTarget) setLocationName(deepTarget)
+    router.push(href)
+  }
+
+  const generateDescription = async () => {
+    if (!deepTarget) return
+    setGenLoading(true)
+    setGenError(null)
+    setGenText(null)
+    try {
+      const res = await fetch("/api/meo/generate-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locationName: deepTarget }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+      setGenText(j.description)
+    } catch (e) {
+      setGenError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setGenLoading(false)
+    }
+  }
+
+  const copyGenText = async () => {
+    if (!genText) return
+    await navigator.clipboard.writeText(genText)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -107,6 +175,8 @@ export default function MeoDiagnosisPage() {
   const runDeep = async (locationName: string) => {
     setDeepTarget(locationName)
     setDeepResult(null)
+    setGenText(null)
+    setGenError(null)
     setDeepLoading(true)
     try {
       const res = await fetch(
@@ -350,27 +420,91 @@ export default function MeoDiagnosisPage() {
 
                   {/* チェックリスト */}
                   <div className="space-y-2">
-                    {deepResult.checks.map((c) => (
-                      <div
-                        key={c.id}
-                        className={`border rounded p-3 ${c.ok ? "bg-green-50/50 border-green-200" : "bg-red-50/40 border-red-200"}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          {c.ok ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                          ) : (
-                            <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                    {deepResult.checks.map((c) => {
+                      const fix = FIX_ACTIONS[c.id]
+                      return (
+                        <div
+                          key={c.id}
+                          className={`border rounded p-3 ${c.ok ? "bg-green-50/50 border-green-200" : "bg-red-50/40 border-red-200"}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {c.ok ? (
+                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                            )}
+                            <span className="text-sm font-medium flex-1">{c.label}</span>
+                            <span className="text-xs text-gray-500 whitespace-nowrap">
+                              {c.points} / {c.maxPoints} 点
+                            </span>
+                          </div>
+                          {!c.ok && (
+                            <div className="ml-6 mt-1.5 space-y-2">
+                              <p className="text-xs text-gray-600">{c.advice}</p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {fix && (
+                                  <button
+                                    onClick={() => goFix(fix.href)}
+                                    className="text-xs text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded px-3 py-1.5 flex items-center gap-1"
+                                  >
+                                    {fix.label}
+                                    <ArrowRight className="h-3 w-3" />
+                                  </button>
+                                )}
+                                {c.id === "description" && (
+                                  <button
+                                    onClick={generateDescription}
+                                    disabled={genLoading}
+                                    className="text-xs text-[#4a90e2] border border-[#4a90e2] rounded px-3 py-1.5 flex items-center gap-1 hover:bg-blue-50 disabled:opacity-50"
+                                  >
+                                    {genLoading ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Sparkles className="h-3 w-3" />
+                                    )}
+                                    AIで説明文の下書きを生成
+                                  </button>
+                                )}
+                              </div>
+                              {c.id === "description" && genError && (
+                                <p className="text-xs text-red-700 bg-red-50 rounded p-2">
+                                  {genError}
+                                </p>
+                              )}
+                              {c.id === "description" && genText && (
+                                <div className="border rounded bg-white p-2 space-y-2">
+                                  <textarea
+                                    value={genText}
+                                    onChange={(e) => setGenText(e.target.value)}
+                                    rows={7}
+                                    className="w-full text-xs border rounded p-2"
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={copyGenText}
+                                      className="text-xs border rounded px-3 py-1.5 flex items-center gap-1 hover:bg-gray-50"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                      {copied ? "コピーしました" : "コピー"}
+                                    </button>
+                                    <button
+                                      onClick={() => goFix("/google-data/gbp/basic-info")}
+                                      className="text-xs text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded px-3 py-1.5 flex items-center gap-1"
+                                    >
+                                      基本情報に貼り付けに行く
+                                      <ArrowRight className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                  <p className="text-xs text-gray-500">
+                                    ※ 内容を確認・編集してから基本情報ページの「ビジネスの説明」に貼り付けて保存してください。AI が生成しただけでは GBP には反映されません。
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           )}
-                          <span className="text-sm font-medium flex-1">{c.label}</span>
-                          <span className="text-xs text-gray-500 whitespace-nowrap">
-                            {c.points} / {c.maxPoints} 点
-                          </span>
                         </div>
-                        {!c.ok && (
-                          <p className="text-xs text-gray-600 mt-1.5 ml-6">{c.advice}</p>
-                        )}
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
 
                   {(deepResult.apiErrors.location ||
