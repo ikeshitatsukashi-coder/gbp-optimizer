@@ -77,17 +77,11 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
 
   const handleFilesDropped = (files: FileList | null) => {
     if (!files || files.length === 0) return
-    // ローカル file → BlobURL でプレビュー用 URL を作成
-    // 実 GBP に送信するには公開 URL が必要（現状のスコープでは案内のみ）
-    const first = files[0]
-    if (!first.type.startsWith("image/")) {
-      setError("画像ファイルを選択してください")
-      return
-    }
-    // ObjectURL は browser メモリ内のみ有効。GBP に送信するには公開 URL が要る旨案内。
-    const blobUrl = URL.createObjectURL(first)
-    onSelect(blobUrl)
-    onClose()
+    // Google の投稿 API は公開 URL しか受け付けないため、
+    // ローカルファイルをそのまま選択させると投稿時に必ず失敗する。
+    setError(
+      "ローカルファイルの直接アップロードは現在未対応です。「画像ライブラリ」タブから店舗の既存写真を選ぶか、公開URLを入力してください。（先に「写真管理」ページで店舗へ画像を追加すると、ライブラリに表示されます）"
+    )
   }
 
   const handleLibraryPick = (item: MediaItem) => {

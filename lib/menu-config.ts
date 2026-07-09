@@ -19,6 +19,11 @@ export const menuConfig: MenuGroup[] = [
     ],
   },
   {
+    label: "MEO対策",
+    icon: "MapPin",
+    children: [{ label: "GBP最適化診断", href: "/meo/diagnosis" }],
+  },
+  {
     label: "Googleインサイト",
     icon: "BarChart3",
     children: [

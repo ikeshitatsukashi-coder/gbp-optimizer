@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { scheduledPosts, stores } from "@/lib/db/schema"
 import { getAccessToken } from "@/lib/get-session"
-import { eq, sql, and } from "drizzle-orm"
+import { eq, sql, and, inArray } from "drizzle-orm"
 import { errorResponse } from "@/lib/api-helpers"
 
 /**
@@ -97,6 +97,7 @@ export async function POST(request: Request) {
     postType?: string
     mediaUrl?: string
     callToAction?: { actionType: string; url: string }
+    draft?: boolean
   }
   try {
     body = await request.json()
@@ -135,7 +136,8 @@ export async function POST(request: Request) {
         summary: body.summary.trim(),
         mediaUrls: body.mediaUrl ? [body.mediaUrl] : null,
         callToAction: body.callToAction ?? null,
-        status: "pending",
+        // draft は自動実行（status='pending' のみ対象）から除外される
+        status: body.draft ? "draft" : "pending",
       })
       .returning({ id: scheduledPosts.id })
 
@@ -161,12 +163,13 @@ export async function DELETE(request: Request) {
   }
 
   try {
+    // pending と draft は削除可、posted/failed は履歴として保持
     const result = await db
       .delete(scheduledPosts)
       .where(
         and(
           eq(scheduledPosts.id, parseInt(id, 10)),
-          eq(scheduledPosts.status, "pending")
+          inArray(scheduledPosts.status, ["pending", "draft"])
         )
       )
       .returning({ id: scheduledPosts.id })

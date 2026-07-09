@@ -187,10 +187,23 @@ export function createGmbClient(accessToken: string) {
     },
 
     /**
-     * List local posts (v4)
+     * List local posts (v4) — 全ページを辿って返す（上限300件）
      */
     async listPosts(accountName: string, locationName: string) {
-      return fetchApi(buildV4Path(accountName, locationName, "localPosts"))
+      const base = buildV4Path(accountName, locationName, "localPosts")
+      const all: unknown[] = []
+      let pageToken: string | undefined
+      do {
+        const params = new URLSearchParams({ pageSize: "100" })
+        if (pageToken) params.set("pageToken", pageToken)
+        const res = (await fetchApi(`${base}?${params}`)) as {
+          localPosts?: unknown[]
+          nextPageToken?: string
+        }
+        if (Array.isArray(res.localPosts)) all.push(...res.localPosts)
+        pageToken = res.nextPageToken
+      } while (pageToken && all.length < 300)
+      return { localPosts: all }
     },
 
     /**

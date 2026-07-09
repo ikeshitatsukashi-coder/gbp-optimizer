@@ -76,6 +76,7 @@ const STATUS_LABELS: Record<string, string> = {
   LIVE: "投稿済",
   posted: "投稿済",
   pending: "予約中",
+  draft: "下書き",
   failed: "失敗",
 }
 
@@ -83,6 +84,7 @@ const STATUS_COLORS: Record<string, string> = {
   LIVE: "text-[#4a90e2]",
   posted: "text-[#4a90e2]",
   pending: "text-yellow-700",
+  draft: "text-gray-500",
   failed: "text-red-600",
 }
 
@@ -788,17 +790,17 @@ function NewPostModal({
     setSubmitting(true)
     try {
       if (asDraft || timing === "scheduled") {
-        // 予約 or 下書き
-        const scheduledFor =
-          asDraft && timing === "immediate"
-            ? new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() // draft = far future
-            : new Date(`${scheduledDate}T${scheduledTime}`).toISOString()
+        // 予約 or 下書き（下書きは status='draft' で自動実行対象外）
+        const scheduledFor = new Date(
+          `${scheduledDate}T${scheduledTime}`
+        ).toISOString()
 
         const body: Record<string, unknown> = {
           locationName: store,
           scheduledFor,
           summary: fullSummary,
           postType: topicType,
+          draft: asDraft,
         }
         if (mediaUrl.trim()) body.mediaUrl = mediaUrl.trim()
         if (callToAction) body.callToAction = callToAction

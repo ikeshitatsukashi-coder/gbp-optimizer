@@ -41,12 +41,14 @@ const POST_TYPE_LABELS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "予約中",
+  draft: "下書き",
   posted: "投稿済",
   failed: "失敗",
 }
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-blue-100 text-blue-700",
+  draft: "bg-gray-100 text-gray-600",
   posted: "bg-green-100 text-green-700",
   failed: "bg-red-100 text-red-700",
 }
@@ -248,6 +250,7 @@ export default function ScheduledPostsPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {[
             { key: "pending", label: "予約中" },
+            { key: "draft", label: "下書き" },
             { key: "posted", label: "投稿済" },
             { key: "failed", label: "失敗" },
             { key: "", label: "全て" },
@@ -304,7 +307,7 @@ export default function ScheduledPostsPage() {
                     実行: {formatDateTime(p.executedAt)}
                   </span>
                 )}
-                {p.status === "pending" && (
+                {(p.status === "pending" || p.status === "draft") && (
                   <button
                     onClick={() => handleDelete(p.id)}
                     className="ml-auto text-xs text-red-500 hover:text-red-700 flex items-center gap-1"
