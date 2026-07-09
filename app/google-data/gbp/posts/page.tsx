@@ -75,15 +75,15 @@ const POST_TYPE_LABELS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   LIVE: "投稿済",
   posted: "投稿済",
-  pending: "予約中",
+  pending: "投稿待ち",
   draft: "下書き",
-  failed: "失敗",
+  failed: "エラー投稿",
 }
 
 const STATUS_COLORS: Record<string, string> = {
   LIVE: "text-[#4a90e2]",
   posted: "text-[#4a90e2]",
-  pending: "text-yellow-700",
+  pending: "text-gray-700",
   draft: "text-gray-500",
   failed: "text-red-600",
 }
@@ -128,6 +128,7 @@ export default function PostsPage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [pageSize, setPageSize] = useState(20)
+  const [tab, setTab] = useState<"published" | "queued">("published")
   const [importDropdownOpen, setImportDropdownOpen] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showNewModal, setShowNewModal] = useState(false)
@@ -217,13 +218,21 @@ export default function PostsPage() {
       scheduledId: sp.id,
     }))
 
-    const all = [...s, ...p].sort((a, b) => {
+    // タブ別: 投稿済 = v4 の公開済み投稿 + 実行済み予約（投稿済/失敗のうち posted）
+    //          投稿待ち = 予約中 (pending) / 下書き (draft) / エラー (failed)
+    // ※ posted の予約レコードは v4 側にも現れて二重表示になるため queued からは除外
+    const source =
+      tab === "published"
+        ? p
+        : s.filter((r) => r.status === "pending" || r.status === "draft" || r.status === "failed")
+
+    const all = [...source].sort((a, b) => {
       const da = a.scheduledFor ? new Date(a.scheduledFor).getTime() : 0
       const db = b.scheduledFor ? new Date(b.scheduledFor).getTime() : 0
       return db - da
     })
     return all.map((r, i) => ({ ...r, no: all.length - i }))
-  }, [published, scheduled, currentStoreTitle])
+  }, [published, scheduled, currentStoreTitle, tab])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -381,6 +390,9 @@ export default function PostsPage() {
         <p>
           ※投稿一括インポート時にエラーが発生した場合は、エラーとなった店舗のみを対象に、再度インポートしていただくようお願いいたします。
         </p>
+        <p>
+          予約投稿および投稿待ちは、「投稿待ち・予約中・エラー投稿・下書き」のタブを押下してご確認ください。
+        </p>
       </div>
 
       {/* Toolbar */}
@@ -484,9 +496,51 @@ export default function PostsPage() {
         </button>
       </div>
 
-      {/* Bulk-op row */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
+      {/* Tabs: 投稿済 / 投稿待ち・予約中・エラー投稿・下書き（reference 準拠） */}
+      <div className="flex items-center justify-between border-b border-gray-200 mb-2">
+        <div className="flex gap-8">
+          {(
+            [
+              {
+                key: "published",
+                label: "投稿済（各媒体へ投稿・媒体からの投稿）",
+              },
+              {
+                key: "queued",
+                label: `投稿待ち・予約中・エラー投稿・下書き`,
+              },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => {
+                setTab(t.key)
+                setSelected(new Set())
+              }}
+              className={`pb-2.5 text-[14px] border-b-2 -mb-px transition-colors ${
+                tab === t.key
+                  ? "border-[#4a90e2] text-[#4a90e2] font-medium"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
+          className="h-8 px-2 text-sm border border-gray-300 rounded bg-white mb-1"
+        >
+          <option value={20}>20件</option>
+          <option value={50}>50件</option>
+          <option value={100}>100件</option>
+        </select>
+      </div>
+
+      {/* Bulk-op row（投稿待ちタブのみ操作可能） */}
+      {tab === "queued" && (
+        <div className="flex items-center gap-2 mb-2">
           <label className="flex items-center gap-1.5 text-sm">
             <input
               type="checkbox"
@@ -508,16 +562,7 @@ export default function PostsPage() {
             削除
           </button>
         </div>
-        <select
-          value={pageSize}
-          onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
-          className="h-8 px-2 text-sm border border-gray-300 rounded bg-white"
-        >
-          <option value={20}>20件</option>
-          <option value={50}>50件</option>
-          <option value={100}>100件</option>
-        </select>
-      </div>
+      )}
 
       {error && (
         <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800 whitespace-pre-wrap">
@@ -558,8 +603,8 @@ export default function PostsPage() {
                 <th className="text-left px-2 font-normal">店舗名</th>
                 <th className="text-left px-2 font-normal whitespace-nowrap">投稿日時</th>
                 <th className="text-left px-2 font-normal whitespace-nowrap">開始日時</th>
+                <th className="text-left px-2 font-normal whitespace-nowrap">媒体</th>
                 <th className="text-left px-2 font-normal whitespace-nowrap">繰り返し</th>
-                <th className="text-left px-2 font-normal whitespace-nowrap">次回投稿</th>
                 <th className="text-left px-2 font-normal">ステータス</th>
                 <th className="text-left px-2 font-normal">WF承認</th>
                 <th className="text-left px-2 font-normal">複製</th>
@@ -621,7 +666,7 @@ export default function PostsPage() {
                     {formatDateTime(r.scheduledFor)}
                   </td>
                   <td className="px-2 text-gray-400">—</td>
-                  <td className="px-2 text-gray-400">—</td>
+                  <td className="px-2 text-gray-700">Google</td>
                   <td className="px-2 text-gray-400">—</td>
                   <td
                     className={`px-2 whitespace-nowrap ${STATUS_COLORS[r.status] ?? "text-gray-700"}`}
