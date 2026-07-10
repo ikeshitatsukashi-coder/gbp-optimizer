@@ -293,6 +293,32 @@ export const industryDefaults = pgTable("industry_defaults", {
   templatesHighNoComment: jsonb("templates_high_no_comment").$type<string[]>(),
 })
 
+/**
+ * 外部連携用 API キー
+ * キー本体は保存せず SHA-256 ハッシュのみ保持（発行時に一度だけ表示）。
+ * 対象は読み取り系 + 予約作成のみ（/api/ext/*）。Google への直接書き込みは対象外。
+ */
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: serial("id").primaryKey(),
+    /** 用途がわかる名前（例: "山田さん Chrome連携"） */
+    name: text("name").notNull(),
+    /** SHA-256 hex */
+    keyHash: varchar("key_hash", { length: 64 }).notNull(),
+    /** 表示用プレフィックス（gbp_live_xxxx） */
+    prefix: varchar("prefix", { length: 16 }).notNull(),
+    /** 発行者のメールアドレス */
+    createdBy: text("created_by"),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revoked: boolean("revoked").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("api_keys_key_hash_uniq").on(table.keyHash)]
+)
+
+export type ApiKey = typeof apiKeys.$inferSelect
+
 /* -------------------------------------------------------------------------- */
 /*                                 RELATIONS                                  */
 /* -------------------------------------------------------------------------- */

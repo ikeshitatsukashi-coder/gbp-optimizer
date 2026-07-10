@@ -59,4 +59,9 @@ export const menuConfig: MenuGroup[] = [
     icon: "Calendar",
     href: "/scheduled-posts",
   },
+  {
+    label: "API連携",
+    icon: "KeyRound",
+    href: "/settings/api-keys",
+  },
 ]

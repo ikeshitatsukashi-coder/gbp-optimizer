@@ -8,6 +8,13 @@
       "when": 1778142737218,
       "tag": "0000_skinny_black_widow",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783673693818,
+      "tag": "0001_wooden_elektra",
+      "breakpoints": true
     }
   ]
 }
