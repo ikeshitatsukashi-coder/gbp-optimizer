@@ -171,7 +171,8 @@ ${input.extraInstructions ? `# 追加指示\n${input.extraInstructions}\n` : ""}
 返信本文のみを日本語で出力してください。挨拶や前置き、Markdown 記法、解説、見出しは不要です。返信本文のみ。`
 
   const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-5",
+    // ANTHROPIC_MODEL でコスト調整可: claude-haiku-4-5 にすると約1/3のコスト
+    model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
     max_tokens: 600,
     messages: [{ role: "user", content: prompt }],
   })

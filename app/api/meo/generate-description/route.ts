@@ -119,7 +119,8 @@ ${tone?.styleNotes ?? "丁寧で信頼感のある文体。"}
 
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-5",
+      // ANTHROPIC_MODEL でコスト調整可: claude-haiku-4-5 にすると約1/3のコスト
+      model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     })
