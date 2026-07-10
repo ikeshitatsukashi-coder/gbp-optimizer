@@ -778,7 +778,7 @@ function NewPostModal({
   const [scheduledDate, setScheduledDate] = useState(() => toDateOnly(new Date()))
   const [scheduledTime, setScheduledTime] = useState("10:00")
   const [summary, setSummary] = useState("")
-  const [mediaUrl, setMediaUrl] = useState("")
+  const [mediaUrls, setMediaUrls] = useState<string[]>([])
   const [ctaType, setCtaType] = useState("ACTION_TYPE_UNSPECIFIED")
   const [ctaUrl, setCtaUrl] = useState("")
   const [hashtags, setHashtags] = useState("")
@@ -792,7 +792,7 @@ function NewPostModal({
       setTopicType((duplicateFrom.postType as "STANDARD" | "OFFER" | "EVENT") ?? "STANDARD")
       setTitle(duplicateFrom.title === "—" ? "" : duplicateFrom.title)
       setSummary(duplicateFrom.summary ?? "")
-      setMediaUrl(duplicateFrom.imageUrl ?? "")
+      setMediaUrls(duplicateFrom.imageUrl ? [duplicateFrom.imageUrl] : [])
       if (duplicateFrom.cta?.actionType) {
         setCtaType(duplicateFrom.cta.actionType)
         setCtaUrl(duplicateFrom.cta.url ?? "")
@@ -802,7 +802,7 @@ function NewPostModal({
       setTopicType("STANDARD")
       setTitle("")
       setSummary("")
-      setMediaUrl("")
+      setMediaUrls([])
       setCtaType("ACTION_TYPE_UNSPECIFIED")
       setCtaUrl("")
       setHashtags("")
@@ -847,7 +847,7 @@ function NewPostModal({
           postType: topicType,
           draft: asDraft,
         }
-        if (mediaUrl.trim()) body.mediaUrl = mediaUrl.trim()
+        if (mediaUrls.length > 0) body.mediaUrls = mediaUrls
         if (callToAction) body.callToAction = callToAction
 
         const res = await fetch("/api/scheduled-posts", {
@@ -866,8 +866,11 @@ function NewPostModal({
           topicType,
         }
         if (callToAction) post.callToAction = callToAction
-        if (mediaUrl.trim()) {
-          post.media = [{ mediaFormat: "PHOTO", sourceUrl: mediaUrl.trim() }]
+        if (mediaUrls.length > 0) {
+          post.media = mediaUrls.map((url) => ({
+            mediaFormat: "PHOTO",
+            sourceUrl: url,
+          }))
         }
         const res = await fetch("/api/gbp/posts", {
           method: "POST",
@@ -1107,33 +1110,46 @@ function NewPostModal({
               <button
                 type="button"
                 onClick={() => setImageLibraryOpen(true)}
-                className="text-sm text-[#4a90e2] border border-[#4a90e2] rounded px-4 h-9 hover:bg-blue-50"
+                disabled={mediaUrls.length >= 10}
+                className="text-sm text-[#4a90e2] border border-[#4a90e2] rounded px-4 h-9 hover:bg-blue-50 disabled:opacity-50"
               >
                 ファイル選択
               </button>
-              {mediaUrl ? (
-                <div className="flex items-center gap-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={mediaUrl}
-                    alt=""
-                    className="w-10 h-10 rounded object-cover border"
-                  />
-                  <span className="text-xs text-gray-600 max-w-[240px] truncate">
-                    {mediaUrl.split("/").pop() ?? mediaUrl}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setMediaUrl("")}
-                    className="text-xs text-red-500 hover:underline"
-                  >
-                    解除
-                  </button>
-                </div>
-              ) : (
-                <span className="text-xs text-gray-500">選択されていません。</span>
-              )}
+              <span className="text-xs text-gray-500">
+                {mediaUrls.length === 0
+                  ? "選択されていません。（最大10枚・PC からのアップロード可・自動リサイズ）"
+                  : `${mediaUrls.length} / 10 枚`}
+              </span>
             </div>
+            {mediaUrls.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {mediaUrls.map((url, i) => (
+                  <div key={`${url}-${i}`} className="relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt=""
+                      className="w-20 h-20 rounded object-cover border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMediaUrls((prev) => prev.filter((_, idx) => idx !== i))
+                      }
+                      className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow hover:bg-red-600"
+                      title="この画像を外す"
+                    >
+                      ×
+                    </button>
+                    {i === 0 && (
+                      <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] text-center rounded-b">
+                        メイン
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ボタンの追加 */}
@@ -1321,7 +1337,10 @@ function NewPostModal({
         isOpen={imageLibraryOpen}
         onClose={() => setImageLibraryOpen(false)}
         locationName={store || defaultLocationName}
-        onSelect={(url) => setMediaUrl(url)}
+        maxCount={10 - mediaUrls.length}
+        onSelect={(urls) =>
+          setMediaUrls((prev) => [...prev, ...urls].slice(0, 10))
+        }
       />
     </div>
   )

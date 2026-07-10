@@ -96,6 +96,7 @@ export async function POST(request: Request) {
     summary?: string
     postType?: string
     mediaUrl?: string
+    mediaUrls?: string[]
     callToAction?: { actionType: string; url: string }
     draft?: boolean
   }
@@ -134,7 +135,13 @@ export async function POST(request: Request) {
         scheduledFor: scheduledDate,
         postType: body.postType ?? "STANDARD",
         summary: body.summary.trim(),
-        mediaUrls: body.mediaUrl ? [body.mediaUrl] : null,
+        // mediaUrls 配列を優先、旧 mediaUrl 単体も許容（Excelインポート互換）。最大10枚
+        mediaUrls:
+          Array.isArray(body.mediaUrls) && body.mediaUrls.length > 0
+            ? body.mediaUrls.slice(0, 10)
+            : body.mediaUrl
+              ? [body.mediaUrl]
+              : null,
         callToAction: body.callToAction ?? null,
         // draft は自動実行（status='pending' のみ対象）から除外される
         status: body.draft ? "draft" : "pending",

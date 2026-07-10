@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { X, Search, Loader2, ImageIcon, Cloud } from "lucide-react"
+import { X, Search, Loader2, ImageIcon, Cloud, CheckCircle2 } from "lucide-react"
+import { resizeImageForGbp } from "@/lib/image-resize"
 
 interface MediaItem {
   name?: string
@@ -12,19 +13,35 @@ interface MediaItem {
   locationAssociation?: { category?: string }
 }
 
+interface UploadingFile {
+  name: string
+  status: "resizing" | "uploading" | "done" | "error"
+  error?: string
+}
+
 interface Props {
   isOpen: boolean
   onClose: () => void
   locationName: string | null
-  onSelect: (url: string) => void
+  /** 選択された画像 URL 群を返す（アップロードタブは複数、ライブラリも複数選択可） */
+  onSelect: (urls: string[]) => void
+  /** 選択できる残り枚数（投稿の最大10枚制限を呼び出し側から伝える） */
+  maxCount?: number
 }
 
 /**
- * 画像を選ぶモーダル。 reference (meo-dash) の 2 タブ UI にビジュアル寄せ。
- * - タブ1: 画像をアップロード（drag&drop + ファイル選択）
- * - タブ2: 画像ライブラリ（既存写真グリッド）
+ * 画像を選ぶモーダル。
+ * - タブ1: 画像をアップロード — ローカルファイル（複数可）を 2540×1430 以内に
+ *   自動リサイズして Vercel Blob にアップロード → 公開 URL を返す
+ * - タブ2: 画像ライブラリ — 店舗の既存写真から複数選択
  */
-export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: Props) {
+export function ImageLibraryModal({
+  isOpen,
+  onClose,
+  locationName,
+  onSelect,
+  maxCount = 10,
+}: Props) {
   const [tab, setTab] = useState<"upload" | "library">("upload")
   const [inputUrl, setInputUrl] = useState("")
   const [media, setMedia] = useState<MediaItem[]>([])
@@ -32,6 +49,8 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [dragOver, setDragOver] = useState(false)
+  const [uploads, setUploads] = useState<UploadingFile[]>([])
+  const [librarySelected, setLibrarySelected] = useState<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchMedia = useCallback(async () => {
@@ -59,6 +78,14 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
     if (isOpen && tab === "library") fetchMedia()
   }, [isOpen, tab, fetchMedia])
 
+  useEffect(() => {
+    if (isOpen) {
+      setUploads([])
+      setLibrarySelected(new Set())
+      setError(null)
+    }
+  }, [isOpen])
+
   if (!isOpen) return null
 
   const filtered = search.trim()
@@ -70,32 +97,94 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
   const handleUrlPick = () => {
     const u = inputUrl.trim()
     if (!u) return
-    onSelect(u)
+    onSelect([u])
     setInputUrl("")
     onClose()
   }
 
-  const handleFilesDropped = (files: FileList | null) => {
+  /**
+   * ローカルファイル群を リサイズ → アップロード。
+   * 全ファイル完了後、成功した URL 群を onSelect でまとめて返す。
+   */
+  const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
-    // Google の投稿 API は公開 URL しか受け付けないため、
-    // ローカルファイルをそのまま選択させると投稿時に必ず失敗する。
-    setError(
-      "ローカルファイルの直接アップロードは現在未対応です。「画像ライブラリ」タブから店舗の既存写真を選ぶか、公開URLを入力してください。（先に「写真管理」ページで店舗へ画像を追加すると、ライブラリに表示されます）"
-    )
-  }
+    const list = Array.from(files)
+      .filter((f) => f.type.startsWith("image/"))
+      .slice(0, maxCount)
+    if (list.length === 0) {
+      setError("画像ファイルを選択してください")
+      return
+    }
+    setError(null)
+    setUploads(list.map((f) => ({ name: f.name, status: "resizing" as const })))
 
-  const handleLibraryPick = (item: MediaItem) => {
-    const url = item.googleUrl || item.sourceUrl || item.thumbnailUrl
-    if (url) {
-      onSelect(url)
-      onClose()
+    const urls: string[] = []
+    for (let i = 0; i < list.length; i++) {
+      const file = list[i]
+      try {
+        // 1. クライアント側リサイズ (2540×1430 以内・JPEG)
+        const resized = await resizeImageForGbp(file)
+        setUploads((prev) =>
+          prev.map((u, idx) => (idx === i ? { ...u, status: "uploading" } : u))
+        )
+
+        // 2. Vercel Blob へアップロード
+        const fd = new FormData()
+        fd.append("file", new File([resized.blob], resized.fileName, { type: "image/jpeg" }))
+        const res = await fetch("/api/upload", { method: "POST", body: fd })
+        const j = await res.json()
+        if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+
+        urls.push(j.url)
+        setUploads((prev) =>
+          prev.map((u, idx) => (idx === i ? { ...u, status: "done" } : u))
+        )
+      } catch (e) {
+        setUploads((prev) =>
+          prev.map((u, idx) =>
+            idx === i
+              ? {
+                  ...u,
+                  status: "error",
+                  error: e instanceof Error ? e.message : String(e),
+                }
+              : u
+          )
+        )
+      }
+    }
+
+    if (urls.length > 0) {
+      onSelect(urls)
+      // 全部成功したら自動で閉じる。一部失敗ならエラー表示のため開いたまま
+      if (urls.length === list.length) {
+        setTimeout(() => onClose(), 400)
+      }
     }
   }
 
+  const toggleLibraryPick = (item: MediaItem) => {
+    const url = item.googleUrl || item.sourceUrl || item.thumbnailUrl
+    if (!url) return
+    setLibrarySelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(url)) next.delete(url)
+      else if (next.size < maxCount) next.add(url)
+      return next
+    })
+  }
+
+  const confirmLibraryPick = () => {
+    if (librarySelected.size === 0) return
+    onSelect(Array.from(librarySelected))
+    onClose()
+  }
+
+  const uploading = uploads.some((u) => u.status === "resizing" || u.status === "uploading")
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-        {/* Close */}
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col relative">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10"
@@ -142,9 +231,9 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
                 onDrop={(e) => {
                   e.preventDefault()
                   setDragOver(false)
-                  handleFilesDropped(e.dataTransfer.files)
+                  handleFiles(e.dataTransfer.files)
                 }}
-                className={`border-2 border-dashed rounded-lg py-14 px-6 text-center transition-colors ${
+                className={`border-2 border-dashed rounded-lg py-12 px-6 text-center transition-colors ${
                   dragOver
                     ? "border-[#4a90e2] bg-blue-50"
                     : "border-gray-300 bg-gray-50/50 hover:bg-gray-50"
@@ -159,7 +248,8 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
                   </p>
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="text-sm text-[#4a90e2] border border-[#4a90e2] rounded px-4 py-2 hover:bg-blue-50"
+                    disabled={uploading}
+                    className="text-sm text-[#4a90e2] border border-[#4a90e2] rounded px-4 py-2 hover:bg-blue-50 disabled:opacity-50"
                   >
                     ファイルを選択...
                   </button>
@@ -169,15 +259,42 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
                     accept="image/*"
                     multiple
                     className="hidden"
-                    onChange={(e) => handleFilesDropped(e.target.files)}
+                    onChange={(e) => handleFiles(e.target.files)}
                   />
                   <p className="text-xs text-gray-500">
-                    ファイル追加(Shiftキーを押しながらファイルを複数選択可能)
+                    複数選択可（最大{maxCount}枚）。2540×1430px を超える画像は自動でリサイズされます。
                   </p>
                 </div>
               </div>
 
-              {/* URL 入力（Vercel Blob 直アップロード対応前の一時措置） */}
+              {/* Upload progress */}
+              {uploads.length > 0 && (
+                <div className="border rounded divide-y">
+                  {uploads.map((u, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 text-sm">
+                      {u.status === "done" ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                      ) : u.status === "error" ? (
+                        <X className="h-4 w-4 text-red-500 shrink-0" />
+                      ) : (
+                        <Loader2 className="h-4 w-4 animate-spin text-[#4a90e2] shrink-0" />
+                      )}
+                      <span className="truncate flex-1">{u.name}</span>
+                      <span className="text-xs text-gray-500 whitespace-nowrap">
+                        {u.status === "resizing"
+                          ? "リサイズ中…"
+                          : u.status === "uploading"
+                            ? "アップロード中…"
+                            : u.status === "done"
+                              ? "完了"
+                              : u.error}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* URL 入力（補助手段） */}
               <div className="border rounded p-4 bg-white">
                 <p className="text-xs text-gray-500 mb-2">
                   または、公開URLを直接指定して選択:
@@ -201,28 +318,18 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
                 </div>
               </div>
 
-              {/* Size recommendations */}
-              <div className="bg-gray-50 border border-gray-200 rounded p-4 text-sm">
-                <p className="font-medium mb-2">画像の推奨サイズ</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-gray-600">
-                  <div>
-                    <p className="font-medium text-gray-700">Google、Facebook、Twitter</p>
-                    <p>1200×900 以上（4:3 比推奨）</p>
-                    <p>正方形の場合 720×720 以上</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-700">Instagram</p>
-                    <p>1080×1080（正方形）</p>
-                    <p>ファイル形式: JPG / PNG / WEBP</p>
-                  </div>
-                </div>
-              </div>
-
               {error && (
                 <div className="text-sm text-red-800 bg-red-50 border border-red-200 rounded p-3">
                   {error}
                 </div>
               )}
+
+              <div className="bg-gray-50 border border-gray-200 rounded p-4 text-xs text-gray-600">
+                <p className="font-medium text-gray-700 mb-1">自動リサイズについて</p>
+                <p>
+                  アップロード時に 2540×1430px に収まるよう自動縮小し、JPEG に変換します（縦横比は維持）。Google の投稿画像要件（250×250px 以上・10KB〜5MB）を満たさない小さすぎる画像はエラーになります。
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -268,16 +375,22 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
                 </div>
               )}
 
-              {/* Grid */}
+              {/* Grid（複数選択） */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {filtered.map((m) => {
                   const src = m.thumbnailUrl || m.googleUrl || m.sourceUrl
+                  const url = m.googleUrl || m.sourceUrl || m.thumbnailUrl
                   const label = m.name ? m.name.split("/").pop() : ""
+                  const isPicked = url ? librarySelected.has(url) : false
                   return (
                     <button
                       key={m.name}
-                      onClick={() => handleLibraryPick(m)}
-                      className="text-left border rounded overflow-hidden hover:shadow-md hover:border-[#4a90e2] transition-all"
+                      onClick={() => toggleLibraryPick(m)}
+                      className={`text-left border rounded overflow-hidden transition-all relative ${
+                        isPicked
+                          ? "border-[#4a90e2] ring-2 ring-[#4a90e2]/40 shadow"
+                          : "hover:shadow-md hover:border-[#4a90e2]"
+                      }`}
                     >
                       <div className="aspect-square bg-gray-100 relative">
                         {src ? (
@@ -286,11 +399,14 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
                         ) : (
                           <ImageIcon className="h-8 w-8 text-gray-400 m-auto absolute inset-0" />
                         )}
+                        {isPicked && (
+                          <div className="absolute top-1 right-1 bg-[#4a90e2] rounded-full p-0.5">
+                            <CheckCircle2 className="h-4 w-4 text-white" />
+                          </div>
+                        )}
                       </div>
                       <div className="px-2 py-1.5">
-                        <p className="text-xs font-medium truncate">
-                          {label ?? "IMG"}
-                        </p>
+                        <p className="text-xs font-medium truncate">{label ?? "IMG"}</p>
                         <p className="text-xs text-gray-500">
                           {m.createTime
                             ? new Date(m.createTime).toLocaleDateString("ja-JP")
@@ -304,6 +420,22 @@ export function ImageLibraryModal({ isOpen, onClose, locationName, onSelect }: P
             </div>
           )}
         </div>
+
+        {/* Footer（ライブラリタブ: まとめて追加） */}
+        {tab === "library" && (
+          <div className="border-t px-6 py-3 flex items-center justify-between bg-gray-50">
+            <span className="text-sm text-gray-600">
+              {librarySelected.size} / {maxCount} 枚選択中
+            </span>
+            <button
+              onClick={confirmLibraryPick}
+              disabled={librarySelected.size === 0}
+              className="text-sm text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded px-6 py-2 disabled:opacity-40"
+            >
+              選択した画像を追加
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
