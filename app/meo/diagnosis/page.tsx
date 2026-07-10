@@ -301,12 +301,13 @@ export default function MeoDiagnosisPage() {
                 <th className="text-right px-2 font-normal whitespace-nowrap">返信率</th>
                 <th className="text-right px-2 font-normal whitespace-nowrap">未対応低評価</th>
                 <th className="text-left px-2 font-normal">主な課題</th>
+                <th className="text-left px-2 font-normal w-24">診断・修正</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={10} className="text-center py-10 text-muted-foreground text-sm">
+                  <td colSpan={11} className="text-center py-10 text-muted-foreground text-sm">
                     データがありません
                   </td>
                 </tr>
@@ -367,6 +368,17 @@ export default function MeoDiagnosisPage() {
                     <div className="truncate text-gray-500" title={s.issues.join(" / ")}>
                       {s.issues.length === 0 ? "—" : s.issues.join(" / ")}
                     </div>
+                  </td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        runDeep(s.locationName)
+                      }}
+                      className="text-[11px] text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded px-2.5 py-1 whitespace-nowrap"
+                    >
+                      診断・修正 →
+                    </button>
                   </td>
                 </tr>
               ))}
