@@ -83,6 +83,223 @@ function TitleSegments({ text }: { text: string }) {
   )
 }
 
+/* ---------------------- ベクターイラスト（SVG手描き） ---------------------- */
+
+/** キラキラ（4方向スター） */
+function Sparkle({
+  size,
+  color,
+  style,
+}: {
+  size: number
+  color: string
+  style?: React.CSSProperties
+}) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      style={{ width: `${size}mm`, height: `${size}mm`, position: "absolute", ...style }}
+    >
+      <path d="M50 2 L60 40 L98 50 L60 60 L50 98 L40 60 L2 50 L40 40 Z" fill={color} />
+    </svg>
+  )
+}
+
+/** フラット人物バスト（柏市チラシ風） */
+function PersonBust({
+  skin,
+  hair,
+  shirt,
+  variant = "short",
+  widthMm,
+  style,
+}: {
+  skin: string
+  hair: string
+  shirt: string
+  variant?: "short" | "bob" | "long" | "bun" | "glasses"
+  widthMm: number
+  style?: React.CSSProperties
+}) {
+  return (
+    <svg
+      viewBox="0 0 100 112"
+      style={{ width: `${widthMm}mm`, height: `${(widthMm * 112) / 100}mm`, ...style }}
+    >
+      {variant === "long" && (
+        <path d="M27 40 h46 v34 q0 10 -10 10 h-26 q-10 0 -10 -10 z" fill={hair} />
+      )}
+      {variant === "bun" && <circle cx="50" cy="15" r="9" fill={hair} />}
+      {/* 髪ベース */}
+      <circle cx="50" cy={variant === "short" || variant === "glasses" ? 38 : 41} r="23" fill={hair} />
+      {variant === "bob" && (
+        <>
+          <rect x="25" y="40" width="9" height="22" rx="4.5" fill={hair} />
+          <rect x="66" y="40" width="9" height="22" rx="4.5" fill={hair} />
+        </>
+      )}
+      {/* 耳 */}
+      <circle cx="31" cy="51" r="4" fill={skin} />
+      <circle cx="69" cy="51" r="4" fill={skin} />
+      {/* 顔 */}
+      <circle cx="50" cy="50" r="19" fill={skin} />
+      {/* 体 */}
+      <path d="M18 112 Q18 80 50 80 Q82 80 82 112 Z" fill={shirt} />
+      {/* 目・口・ほっぺ */}
+      {variant === "glasses" ? (
+        <>
+          <circle cx="43" cy="52" r="5.5" fill="none" stroke="#4a3b32" strokeWidth="1.8" />
+          <circle cx="57" cy="52" r="5.5" fill="none" stroke="#4a3b32" strokeWidth="1.8" />
+          <path d="M48.5 52 h3" stroke="#4a3b32" strokeWidth="1.8" />
+          <circle cx="43" cy="52" r="1.8" fill="#4a3b32" />
+          <circle cx="57" cy="52" r="1.8" fill="#4a3b32" />
+        </>
+      ) : (
+        <>
+          <circle cx="43" cy="52" r="2" fill="#4a3b32" />
+          <circle cx="57" cy="52" r="2" fill="#4a3b32" />
+        </>
+      )}
+      <path
+        d="M45 60 Q50 64 55 60"
+        stroke="#4a3b32"
+        strokeWidth="2"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <circle cx="36" cy="57" r="3" fill="#f2a9a0" opacity="0.5" />
+      <circle cx="64" cy="57" r="3" fill="#f2a9a0" opacity="0.5" />
+    </svg>
+  )
+}
+
+/** 指さしポーズの人物（チェックリスト用） */
+function PointingPerson({ widthMm, style }: { widthMm: number; style?: React.CSSProperties }) {
+  const skin = "#f7d9c4"
+  const hair = "#4a3a32"
+  const shirt = "#e8833a"
+  return (
+    <svg
+      viewBox="0 0 130 130"
+      style={{ width: `${widthMm}mm`, height: `${widthMm}mm`, position: "absolute", ...style }}
+    >
+      {/* 後ろ髪 */}
+      <path d="M32 46 h46 v32 q0 10 -10 10 h-26 q-10 0 -10 -10 z" fill={hair} />
+      <circle cx="55" cy="46" r="23" fill={hair} />
+      <circle cx="55" cy="20" r="9" fill={hair} />
+      <circle cx="36" cy="56" r="4" fill={skin} />
+      <circle cx="74" cy="56" r="4" fill={skin} />
+      <circle cx="55" cy="55" r="19" fill={skin} />
+      {/* 体 */}
+      <path d="M22 130 Q22 88 55 88 Q88 88 88 130 Z" fill={shirt} />
+      {/* 腕（指さし） */}
+      <path
+        d="M80 100 Q100 88 108 68"
+        stroke={shirt}
+        strokeWidth="13"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <circle cx="109" cy="64" r="7" fill={skin} />
+      <path d="M110 60 L114 48" stroke={skin} strokeWidth="5" strokeLinecap="round" />
+      {/* 顔 */}
+      <circle cx="48" cy="57" r="2" fill="#4a3b32" />
+      <circle cx="62" cy="57" r="2" fill="#4a3b32" />
+      <path d="M50 65 Q55 69 60 65" stroke="#4a3b32" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <circle cx="41" cy="62" r="3" fill="#f2a9a0" opacity="0.5" />
+      <circle cx="69" cy="62" r="3" fill="#f2a9a0" opacity="0.5" />
+    </svg>
+  )
+}
+
+/** QRの上からひょっこり覗く顔（ポップ用・線画） */
+function PeekingFace({ widthMm, style }: { widthMm: number; style?: React.CSSProperties }) {
+  return (
+    <svg
+      viewBox="0 0 100 60"
+      style={{
+        width: `${widthMm}mm`,
+        height: `${(widthMm * 60) / 100}mm`,
+        position: "absolute",
+        ...style,
+      }}
+    >
+      <circle cx="50" cy="34" r="21" fill="white" stroke={POP_BLUE} strokeWidth="3" />
+      <path
+        d="M31 28 Q34 12 50 11 Q66 12 69 28"
+        fill="white"
+        stroke={POP_BLUE}
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <path d="M42 13 L41 22 M50 11 L50 20 M58 13 L59 22" stroke={POP_BLUE} strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="43" cy="36" r="2.4" fill={POP_BLUE} />
+      <circle cx="57" cy="36" r="2.4" fill={POP_BLUE} />
+      <path d="M46 44 Q50 47.5 54 44" stroke={POP_BLUE} strokeWidth="2.4" fill="none" strokeLinecap="round" />
+      <rect x="21" y="49" width="14" height="8.5" rx="4" fill="white" stroke={POP_BLUE} strokeWidth="2.6" />
+      <rect x="65" y="49" width="14" height="8.5" rx="4" fill="white" stroke={POP_BLUE} strokeWidth="2.6" />
+    </svg>
+  )
+}
+
+/** プレゼントボックス（ミニマル用） */
+function GiftBox({ size, color, style }: { size: number; color: string; style?: React.CSSProperties }) {
+  return (
+    <svg viewBox="0 0 100 100" style={{ width: `${size}mm`, height: `${size}mm`, ...style }}>
+      <rect x="16" y="42" width="68" height="48" rx="5" fill={color} />
+      <rect x="10" y="30" width="80" height="16" rx="4" fill={color} opacity="0.75" />
+      <rect x="44" y="30" width="12" height="60" fill="white" opacity="0.85" />
+      <path
+        d="M50 30 q-16 -14 -20 -3 q-2 9 20 3 q16 -14 20 -3 q2 9 -20 3 z"
+        fill={color}
+        opacity="0.9"
+      />
+    </svg>
+  )
+}
+
+/** スマホでQR読み取りアイコン（線画） */
+function PhoneQrIcon({ widthMm, color, style }: { widthMm: number; color: string; style?: React.CSSProperties }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      style={{ width: `${widthMm}mm`, height: `${widthMm}mm`, ...style }}
+    >
+      <rect x="28" y="6" width="44" height="88" rx="9" fill="white" stroke={color} strokeWidth="4" />
+      <path d="M44 14 h12" stroke={color} strokeWidth="3.5" strokeLinecap="round" />
+      {/* QR */}
+      <rect x="38" y="30" width="11" height="11" fill={color} />
+      <rect x="53" y="30" width="11" height="11" fill={color} />
+      <rect x="38" y="45" width="11" height="11" fill={color} />
+      <rect x="53" y="47" width="5" height="5" fill={color} />
+      <rect x="59" y="52" width="5" height="5" fill={color} />
+      {/* 電波 */}
+      <path d="M80 30 q8 20 0 40 M88 24 q11 26 0 52" stroke={color} strokeWidth="3.5" fill="none" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** 鉛筆（チェックリスト用・斜め置き） */
+function PencilIcon({ widthMm, style }: { widthMm: number; style?: React.CSSProperties }) {
+  return (
+    <svg
+      viewBox="0 0 120 30"
+      style={{
+        width: `${widthMm}mm`,
+        height: `${(widthMm * 30) / 120}mm`,
+        position: "absolute",
+        ...style,
+      }}
+    >
+      <rect x="4" y="8" width="14" height="14" rx="3" fill="#e88a9a" />
+      <rect x="16" y="6" width="6" height="18" fill="#c8ccd4" />
+      <rect x="22" y="5" width="70" height="20" rx="2" fill="#f3b64c" />
+      <path d="M92 5 L112 15 L92 25 Z" fill="#f7d9c4" />
+      <path d="M104 11 L112 15 L104 19 Z" fill="#4a3a32" />
+    </svg>
+  )
+}
+
 function QrBox({
   qr,
   sizeMm,
@@ -230,12 +447,20 @@ function PosterPop({ store, qr, subtitle, bodyText, telFallback, qrLabel }: Post
         />
       ))}
 
+      {/* キラキラ */}
+      <Sparkle size={8} color={POP_YELLOW} style={{ left: "28mm", top: "56mm" }} />
+      <Sparkle size={5} color={POP_BLUE} style={{ left: "176mm", top: "62mm" }} />
+      <Sparkle size={7} color={POP_YELLOW} style={{ left: "186mm", top: "168mm" }} />
+      <Sparkle size={5} color={POP_BLUE} style={{ left: "18mm", top: "176mm" }} />
+
       {/* 吹き出し */}
       <Bubble x={12} y={16} w={62} rotate={-3} tail="br" yellow>
         ご来店
         <br />
         ありがとうございます！
       </Bubble>
+      {/* 吹き出しの上から覗く顔 */}
+      <PeekingFace widthMm={21} style={{ left: "32mm", top: "5.5mm", transform: "rotate(-3deg)", zIndex: 2 }} />
       <Bubble x={140} y={22} w={56} rotate={2.5} tail="bl">
         回答は
         <br />
@@ -316,7 +541,7 @@ function PosterPop({ store, qr, subtitle, bodyText, telFallback, qrLabel }: Post
             fontSize: "5.5mm",
             padding: "2.5mm 9mm",
             borderRadius: "10mm",
-            marginBottom: "5mm",
+            marginBottom: "13mm",
           }}
         >
           {qrLabel}
@@ -327,7 +552,14 @@ function PosterPop({ store, qr, subtitle, bodyText, telFallback, qrLabel }: Post
             justifyContent: "center",
           }}
         >
-          <QrBox qr={qr} sizeMm={58} border={`1.1mm solid ${POP_BLUE}`} />
+          <div style={{ position: "relative", display: "inline-block" }}>
+            {/* QRの上から覗く顔 */}
+            <PeekingFace
+              widthMm={24}
+              style={{ left: "50%", top: "-12.8mm", transform: "translateX(-50%)", zIndex: 2 }}
+            />
+            <QrBox qr={qr} sizeMm={58} border={`1.1mm solid ${POP_BLUE}`} />
+          </div>
         </div>
         <p style={{ fontSize: "4mm", color: "#555", marginTop: "4mm", fontWeight: 600 }}>
           スマートフォンのカメラで読み取ってください
@@ -405,6 +637,10 @@ function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, qrLabel }: 
           textAlign: "center",
         }}
       >
+        {/* キラキラ */}
+        <Sparkle size={6} color={MIN_ACCENT} style={{ left: "16mm", top: "42mm" }} />
+        <Sparkle size={4.5} color={MIN_ACCENT} style={{ right: "18mm", top: "34mm" }} />
+
         {/* 店名 */}
         <div
           style={{
@@ -503,12 +739,26 @@ function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, qrLabel }: 
           <span style={{ display: "inline-block", width: "34mm", height: "0.3mm", backgroundColor: MIN_ACCENT }} />
         </div>
 
+        {/* プレゼント */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "flex-end",
+            gap: "5mm",
+            marginTop: "7mm",
+          }}
+        >
+          <GiftBox size={10} color={MIN_ACCENT} />
+          <GiftBox size={8} color="#c9dfa8" />
+        </div>
+
         {/* 本文 */}
         <p
           style={{
             fontSize: "4.4mm",
             lineHeight: 2.1,
-            marginTop: "8mm",
+            marginTop: "5mm",
             whiteSpace: "pre-wrap",
             fontWeight: 600,
           }}
@@ -601,6 +851,9 @@ function PosterChecklist({
         overflow: "hidden",
       }}
     >
+      {/* 指さし人物 */}
+      <PointingPerson widthMm={30} style={{ right: "8mm", top: "30mm" }} />
+
       {/* ヘッダー */}
       <div style={{ textAlign: "center", paddingTop: "14mm" }}>
         <p style={{ fontSize: "5mm", color: "#6b5a46", fontWeight: 600 }}>
@@ -692,6 +945,8 @@ function PosterChecklist({
             ))}
           </div>
         </div>
+        {/* 鉛筆 */}
+        <PencilIcon widthMm={34} style={{ right: "-9mm", bottom: "-5mm", transform: "rotate(32deg)", zIndex: 3 }} />
       </div>
 
       {/* QR行 */}
@@ -799,12 +1054,30 @@ function PosterInfo({ store, qr, subtitle, bodyText, telFallback, qrLabel }: Pos
         </p>
       </div>
 
+      {/* 人々のイラスト（柏市チラシ風） */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "flex-end",
+          gap: "3.5mm",
+          marginTop: "6mm",
+        }}
+      >
+        <PersonBust variant="bob" skin="#f7d9c4" hair="#6e4b38" shirt="#e8a04b" widthMm={17} />
+        <PersonBust variant="short" skin="#f2c9ac" hair="#2f2a28" shirt="#4a6fa5" widthMm={19} />
+        <PersonBust variant="long" skin="#f7d9c4" hair="#453a34" shirt="#b56576" widthMm={18} />
+        <PersonBust variant="glasses" skin="#f2c9ac" hair="#8d939c" shirt="#5b8c5a" widthMm={19} />
+        <PersonBust variant="bun" skin="#f7d9c4" hair="#5a4632" shirt={INFO_TEAL} widthMm={17} />
+        <PersonBust variant="short" skin="#f7d9c4" hair="#6e4b38" shirt="#d9a545" widthMm={18} />
+      </div>
+
       <p
         style={{
           textAlign: "center",
           fontSize: "4.4mm",
           lineHeight: 1.9,
-          marginTop: "6mm",
+          marginTop: "5mm",
           whiteSpace: "pre-wrap",
           padding: "0 24mm",
           fontWeight: 600,
