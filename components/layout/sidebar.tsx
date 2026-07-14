@@ -16,6 +16,7 @@ import {
   Archive,
   Calendar,
   KeyRound,
+  Share2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -36,6 +37,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Archive,
   Calendar,
   KeyRound,
+  Share2,
 }
 
 export function Sidebar() {

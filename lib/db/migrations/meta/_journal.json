@@ -15,6 +15,13 @@
       "when": 1783673693818,
       "tag": "0001_wooden_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783999862230,
+      "tag": "0002_furry_wonder_man",
+      "breakpoints": true
     }
   ]
 }

@@ -12,6 +12,10 @@ const PUBLIC_PATHS = [
   "/api/auth",
   // 外部連携 API は APIキー認証（Bearer gbp_live_...）を各ルート内で行う
   "/api/ext",
+  // 公開ページ（トークンが鍵）: アンケート回答 / お客様向けレポート
+  "/s/",
+  "/share/",
+  "/api/public/",
 ]
 
 function isPublicPath(pathname: string): boolean {

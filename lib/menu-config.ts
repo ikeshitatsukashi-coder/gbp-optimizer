@@ -50,6 +50,20 @@ export const menuConfig: MenuGroup[] = [
     ],
   },
   {
+    label: "クチコミ促進",
+    icon: "Megaphone",
+    children: [
+      { label: "アンケート一覧", href: "/surveys" },
+      { label: "アンケート結果", href: "/surveys/results" },
+      { label: "アンケート配布", href: "/surveys/distribute" },
+    ],
+  },
+  {
+    label: "お客様共有ページ",
+    icon: "Share2",
+    href: "/share-links",
+  },
+  {
     label: "自動返信バッチ",
     icon: "Bot",
     href: "/auto-reply",

@@ -87,6 +87,10 @@ export const stores = pgTable(
     autoFlagEnabled: boolean("auto_flag_enabled").notNull().default(false),
     /** 親会社名（除外グループ用、例: 「丸進運輸株式会社」） */
     parentCompany: text("parent_company"),
+    /** Google Maps Place ID（クチコミ投稿URL生成用） */
+    placeId: varchar("place_id", { length: 120 }),
+    /** Google公式のクチコミ投稿URL（metadata.newReviewUri） */
+    newReviewUri: text("new_review_uri"),
     /** 自由メモ */
     notes: text("notes"),
     /** 最後にGoogle APIから情報を同期した時刻 */
@@ -320,6 +324,139 @@ export const apiKeys = pgTable(
 export type ApiKey = typeof apiKeys.$inferSelect
 
 /* -------------------------------------------------------------------------- */
+/*                       アンケート（クチコミ促進）                              */
+/* -------------------------------------------------------------------------- */
+
+/** アンケートの質問構造（jsonb） */
+export interface SurveyChoice {
+  label: string
+  /** アンケート回答後の遷移先: google=Googleレビューへ誘導 / tool=ツール内レビュー */
+  redirect: "google" | "tool"
+}
+export interface SurveyQuestion {
+  title: string
+  /** single=単一選択 / multiple=複数選択 */
+  type: "single" | "multiple"
+  choices: SurveyChoice[]
+}
+
+/**
+ * アンケート定義
+ * 公開URL /s/{token} で回答を受け付ける。回答が1件でも付くと編集不可（複製で対応）。
+ */
+export const surveys = pgTable(
+  "surveys",
+  {
+    id: serial("id").primaryKey(),
+    /** 公開URL用トークン */
+    token: varchar("token", { length: 64 }).notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** group=グループ共通URL（フォーム内で店舗選択） / per_store=店舗ごとのURL */
+    urlMode: varchar("url_mode", { length: 20 }).notNull().default("group"),
+    /** pulldown=店舗名プルダウン / buttons=店舗一覧ボタン */
+    storeSelectMode: varchar("store_select_mode", { length: 20 })
+      .notNull()
+      .default("pulldown"),
+    /** 対象店舗（null = 全 active 店舗） */
+    targetStores: jsonb("target_stores").$type<string[]>(),
+    questions: jsonb("questions").$type<SurveyQuestion[]>().notNull(),
+    /** 回答者情報フォーム（氏名・連絡先）を付けるか */
+    collectRespondent: boolean("collect_respondent").notNull().default(false),
+    status: varchar("status", { length: 20 }).notNull().default("active"), // active | closed
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("surveys_token_uniq").on(table.token)]
+)
+
+/** アンケート回答 */
+export const surveyResponses = pgTable(
+  "survey_responses",
+  {
+    id: serial("id").primaryKey(),
+    surveyId: integer("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** [{ title, selected: ["非常に満足"] }] */
+    answers: jsonb("answers").$type<{ title: string; selected: string[] }[]>().notNull(),
+    respondentName: text("respondent_name"),
+    respondentContact: text("respondent_contact"),
+    /** 回答後の遷移先: google | tool */
+    redirectedTo: varchar("redirected_to", { length: 10 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("survey_responses_survey_idx").on(table.surveyId),
+    index("survey_responses_location_idx").on(table.locationName),
+    index("survey_responses_created_idx").on(table.createdAt),
+  ]
+)
+
+/**
+ * ツール内ユーザーレビュー（Googleレビュー以外の評価）
+ * 不満系の回答者をここに誘導し、社内だけで閲覧する
+ */
+export const surveyReviews = pgTable(
+  "survey_reviews",
+  {
+    id: serial("id").primaryKey(),
+    surveyId: integer("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    responseId: integer("response_id").references(() => surveyResponses.id, {
+      onDelete: "set null",
+    }),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** 1-5 */
+    rating: integer("rating"),
+    comment: text("comment"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("survey_reviews_survey_idx").on(table.surveyId),
+    index("survey_reviews_location_idx").on(table.locationName),
+  ]
+)
+
+/* -------------------------------------------------------------------------- */
+/*                    お客様共有リンク（閲覧専用ページ）                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * お客様向け閲覧専用ページの共有リンク
+ * /share/{token} で認証なし閲覧。インサイトは発行/更新時のスナップショット。
+ */
+export const shareLinks = pgTable(
+  "share_links",
+  {
+    id: serial("id").primaryKey(),
+    token: varchar("token", { length: 64 }).notNull(),
+    /** 表示名（例: 辻水産様向けレポート） */
+    name: text("name").notNull(),
+    /** store=単店舗 / company=親会社グループ */
+    scopeType: varchar("scope_type", { length: 20 }).notNull(),
+    locationName: varchar("location_name", { length: 200 }),
+    parentCompany: text("parent_company"),
+    /** 表示セクション: ["diagnosis","reviews","insights"] */
+    sections: jsonb("sections").$type<string[]>().notNull(),
+    /** インサイトのスナップショット（発行・更新時に取得） */
+    insightsSnapshot: jsonb("insights_snapshot"),
+    revoked: boolean("revoked").notNull().default(false),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("share_links_token_uniq").on(table.token)]
+)
+
+/* -------------------------------------------------------------------------- */
 /*                                 RELATIONS                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -390,3 +527,8 @@ export type ScheduledPost = typeof scheduledPosts.$inferSelect
 export type NewScheduledPost = typeof scheduledPosts.$inferInsert
 export type ToneConfig = typeof toneConfigs.$inferSelect
 export type IndustryDefault = typeof industryDefaults.$inferSelect
+export type Survey = typeof surveys.$inferSelect
+export type NewSurvey = typeof surveys.$inferInsert
+export type SurveyResponse = typeof surveyResponses.$inferSelect
+export type SurveyReview = typeof surveyReviews.$inferSelect
+export type ShareLink = typeof shareLinks.$inferSelect

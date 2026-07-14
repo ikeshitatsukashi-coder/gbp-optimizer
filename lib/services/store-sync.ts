@@ -21,6 +21,10 @@ interface GoogleLocation {
       name?: string | null
     } | null
   } | null
+  metadata?: {
+    placeId?: string | null
+    newReviewUri?: string | null
+  } | null
 }
 
 export interface SyncResult {
@@ -75,6 +79,8 @@ export async function syncAllStores(accessToken: string): Promise<SyncResult> {
           address: l.storefrontAddress ?? null,
           primaryPhone: l.phoneNumbers?.primaryPhone ?? null,
           primaryCategory: l.categories?.primaryCategory?.displayName ?? null,
+          placeId: l.metadata?.placeId ?? null,
+          newReviewUri: l.metadata?.newReviewUri ?? null,
           lastSyncedAt: new Date(),
           // status/industry/autoReply/autoFlag は default を使う（新規時のみ）
         }))
@@ -92,6 +98,8 @@ export async function syncAllStores(accessToken: string): Promise<SyncResult> {
             address: sql`excluded.address`,
             primaryPhone: sql`excluded.primary_phone`,
             primaryCategory: sql`excluded.primary_category`,
+            placeId: sql`excluded.place_id`,
+            newReviewUri: sql`excluded.new_review_uri`,
             lastSyncedAt: sql`excluded.last_synced_at`,
             updatedAt: sql`now()`,
             // status / industry / auto_reply_enabled / auto_flag_enabled / parent_company / notes は据え置き
