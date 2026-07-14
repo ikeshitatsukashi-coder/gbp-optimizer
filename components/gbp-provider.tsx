@@ -6,6 +6,7 @@ import { GbpContext } from "@/lib/store"
 import type { GbpLocation } from "@/lib/store"
 
 const ARCHIVE_KEY = "gbp-archived-locations"
+const SELECTED_KEY = "gbp-selected-location"
 
 export function GbpProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession()
@@ -36,6 +37,16 @@ export function GbpProvider({ children }: { children: React.ReactNode }) {
       console.error("Failed to save archived ids:", err)
     }
   }, [archivedIds])
+
+  // 最後に選択した店舗を記憶（次回アクセス時のデフォルトにする）
+  useEffect(() => {
+    if (!locationName) return
+    try {
+      localStorage.setItem(SELECTED_KEY, locationName)
+    } catch (err) {
+      console.error("Failed to save selected location:", err)
+    }
+  }, [locationName])
 
   const archiveLocation = (name: string) => {
     setArchivedIds((prev) => new Set([...prev, name]))
@@ -118,7 +129,18 @@ export function GbpProvider({ children }: { children: React.ReactNode }) {
           return new Set<string>()
         }
       })()
-      const firstActive = mapped.find((l) => !currentArchived.has(l.name))
+      // 前回選択した店舗があればそれを復元、なければ先頭の非アーカイブ店舗
+      const savedSelected = (() => {
+        try {
+          return localStorage.getItem(SELECTED_KEY)
+        } catch {
+          return null
+        }
+      })()
+      const restored = savedSelected
+        ? mapped.find((l) => l.name === savedSelected && !currentArchived.has(l.name))
+        : undefined
+      const firstActive = restored ?? mapped.find((l) => !currentArchived.has(l.name))
       if (firstActive) {
         setLocationName(firstActive.name)
       }

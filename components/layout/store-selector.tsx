@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useGbp } from "@/lib/store"
+import { normalizeSearchText } from "@/lib/search-normalize"
 import { Search, ChevronDown, Archive, Building2 } from "lucide-react"
 
 export function StoreSelector() {
@@ -12,11 +13,12 @@ export function StoreSelector() {
 
   const current = locations.find((l) => l.name === locationName)
 
-  const filtered = search
+  const normalizedQuery = normalizeSearchText(search)
+  const filtered = normalizedQuery
     ? locations.filter(
         (l) =>
-          l.title.toLowerCase().includes(search.toLowerCase()) ||
-          (l.address && l.address.toLowerCase().includes(search.toLowerCase()))
+          normalizeSearchText(l.title).includes(normalizedQuery) ||
+          (l.address && normalizeSearchText(l.address).includes(normalizedQuery))
       )
     : locations
 

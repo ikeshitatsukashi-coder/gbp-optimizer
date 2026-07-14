@@ -63,11 +63,21 @@ export async function GET(request: Request) {
     if (autoFlag === "false") conditions.push(eq(stores.autoFlagEnabled, false))
     if (q) {
       const like = `%${q}%`
+      // あいまい検索: 中黒・空白を除去した状態でも一致させる
+      // （「アイリンク」で「株式会社アイ・リンク」がヒットするように）
+      const compactQ = q
+        .normalize("NFKC")
+        .toLowerCase()
+        .replace(/[\s・･·\-‐‑–—−]/g, "")
+      const compactLike = `%${compactQ}%`
       conditions.push(
         or(
           ilike(stores.title, like),
           ilike(stores.primaryPhone, like),
-          ilike(stores.parentCompany, like)
+          ilike(stores.parentCompany, like),
+          sql`replace(replace(replace(${stores.title}, '・', ''), ' ', ''), '　', '') ILIKE ${compactLike}`,
+          sql`replace(replace(replace(coalesce(${stores.parentCompany}, ''), '・', ''), ' ', ''), '　', '') ILIKE ${compactLike}`,
+          sql`replace(replace(coalesce(${stores.primaryPhone}, ''), '-', ''), ' ', '') ILIKE ${compactLike}`
         )
       )
     }
