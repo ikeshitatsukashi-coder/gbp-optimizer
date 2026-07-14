@@ -56,6 +56,7 @@ export const menuConfig: MenuGroup[] = [
       { label: "アンケート一覧", href: "/surveys" },
       { label: "アンケート結果", href: "/surveys/results" },
       { label: "アンケート配布", href: "/surveys/distribute" },
+      { label: "クチコミ依頼（メール）", href: "/review-requests" },
     ],
   },
   {

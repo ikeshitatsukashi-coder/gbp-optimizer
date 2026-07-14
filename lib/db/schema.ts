@@ -425,6 +425,38 @@ export const surveyReviews = pgTable(
   ]
 )
 
+/**
+ * クチコミ依頼メールの送信履歴
+ * 来店したお客様にアンケート/クチコミURLをメールで案内する機能のログ
+ */
+export const reviewRequests = pgTable(
+  "review_requests",
+  {
+    id: serial("id").primaryKey(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** survey=アンケートURL / google=Googleクチコミ画面 / none=URLなし */
+    urlType: varchar("url_type", { length: 20 }).notNull().default("survey"),
+    surveyId: integer("survey_id").references(() => surveys.id, {
+      onDelete: "set null",
+    }),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    recipients: jsonb("recipients")
+      .$type<{ name: string; email: string }[]>()
+      .notNull(),
+    sentCount: integer("sent_count").notNull().default(0),
+    failCount: integer("fail_count").notNull().default(0),
+    status: varchar("status", { length: 20 }).notNull().default("done"), // done | partial | failed
+    /** 宛先ごとの送信結果 */
+    results: jsonb("results"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("review_requests_location_idx").on(table.locationName)]
+)
+
 /* -------------------------------------------------------------------------- */
 /*                    お客様共有リンク（閲覧専用ページ）                          */
 /* -------------------------------------------------------------------------- */
@@ -532,3 +564,4 @@ export type NewSurvey = typeof surveys.$inferInsert
 export type SurveyResponse = typeof surveyResponses.$inferSelect
 export type SurveyReview = typeof surveyReviews.$inferSelect
 export type ShareLink = typeof shareLinks.$inferSelect
+export type ReviewRequest = typeof reviewRequests.$inferSelect
