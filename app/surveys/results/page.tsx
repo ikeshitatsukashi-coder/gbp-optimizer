@@ -1,12 +1,50 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2, AlertCircle, Printer, Star } from "lucide-react"
 
 const COLORS = ["#8b7ce8", "#4a90e2", "#41c9b4", "#f5a623", "#e35d6a", "#94a3b8", "#6366f1"]
+
+/**
+ * 印刷（PDF出力）でも確実に描画される純SVGドーナツグラフ。
+ * recharts はプリント時のコンテナ幅計算で消えることがあるため使わない。
+ */
+function DonutChart({ counts }: { counts: { label: string; count: number }[] }) {
+  const total = counts.reduce((a, c) => a + c.count, 0)
+  const R = 78
+  const C = 2 * Math.PI * R
+  let acc = 0
+  const segments = counts
+    .map((c, i) => ({ ...c, color: COLORS[i % COLORS.length] }))
+    .filter((c) => c.count > 0)
+    .map((c) => {
+      const frac = c.count / total
+      const seg = { color: c.color, dash: frac * C, offset: acc * C }
+      acc += frac
+      return seg
+    })
+  return (
+    <svg viewBox="0 0 208 208" className="w-full h-full">
+      <circle cx="104" cy="104" r={R} fill="none" stroke="#f1f5f9" strokeWidth="40" />
+      {segments.map((s, i) => (
+        <circle
+          key={i}
+          cx="104"
+          cy="104"
+          r={R}
+          fill="none"
+          stroke={s.color}
+          strokeWidth="40"
+          strokeDasharray={`${s.dash} ${C - s.dash}`}
+          strokeDashoffset={-s.offset}
+          transform="rotate(-90 104 104)"
+        />
+      ))}
+    </svg>
+  )
+}
 
 interface SurveyOption {
   id: number
@@ -105,9 +143,10 @@ export default function SurveyResultsPage() {
   return (
     <div className="space-y-4">
       <style>{`@media print {
-        aside, .app-header, .no-print { display: none !important; }
-        main { padding: 0 !important; overflow: visible !important; }
-        body { background: white !important; }
+        aside, header, .no-print { display: none !important; }
+        html, body { height: auto !important; overflow: visible !important; display: block !important; background: white !important; }
+        body > div, main { overflow: visible !important; height: auto !important; display: block !important; }
+        main { padding: 0 !important; }
       }`}</style>
 
       <div className="flex items-start justify-between gap-4 flex-wrap no-print">
@@ -200,32 +239,12 @@ export default function SurveyResultsPage() {
           {/* 質問ごとの集計 */}
           {data.questionStats.map((q, qi) => {
             const total = q.counts.reduce((a, c) => a + c.count, 0)
-            const chartData = q.counts.filter((c) => c.count > 0)
             return (
               <div key={qi} className="px-5 py-6 border-b" style={{ breakInside: "avoid" }}>
                 <p className="text-sm font-bold mb-4">質問：{q.title}</p>
                 <div className="flex flex-wrap gap-6 items-center">
                   <div className="relative w-52 h-52 shrink-0">
-                    {total > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={chartData}
-                            dataKey="count"
-                            nameKey="label"
-                            innerRadius={60}
-                            outerRadius={100}
-                            isAnimationActive={false}
-                          >
-                            {chartData.map((_, i) => (
-                              <Cell key={i} fill={COLORS[q.counts.findIndex((c) => c.label === chartData[i].label) % COLORS.length]} />
-                            ))}
-                          </Pie>
-                        </PieChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="w-full h-full rounded-full border-[24px] border-gray-100" />
-                    )}
+                    <DonutChart counts={q.counts} />
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                       <span className="text-xs text-gray-500">すべての回答</span>
                       <span className="text-xl font-bold">{total}</span>

@@ -25,6 +25,14 @@ function isPublicPath(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // ローカルデバッグ専用バイパス（development + 明示フラグの二重ガード）
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.DEV_AUTH_BYPASS === "1"
+  ) {
+    return NextResponse.next()
+  }
+
   // Skip auth check for public paths
   if (isPublicPath(pathname)) {
     return NextResponse.next()

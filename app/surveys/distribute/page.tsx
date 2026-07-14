@@ -150,9 +150,17 @@ export default function DistributePage() {
     }
   }
 
-  // プレビュー用: 先頭店舗のQR
+  // プレビュー用: 先頭店舗のQR（未選択時は見本店舗でプレビュー表示）
+  const PLACEHOLDER_STORE: StoreRow = {
+    locationName: "__placeholder__",
+    title: "こちらに各店舗名が記載されます",
+    primaryPhone: "こちらに各電話番号が記載されます",
+    placeId: null,
+    newReviewUri: null,
+  }
   const [previewQr, setPreviewQr] = useState<string | null>(null)
-  const previewStore = targetStores[0] ?? null
+  const selectedPreviewStore = targetStores[0] ?? null
+  const previewStore = selectedPreviewStore ?? PLACEHOLDER_STORE
   useEffect(() => {
     let cancelled = false
     const run = async () => {
@@ -370,10 +378,12 @@ export default function DistributePage() {
         .print-area { display: none; }
         @media print {
           @page { size: ${tab === "card" || size === "A4" ? "A4" : "B5"}; margin: 0; }
-          body * { visibility: hidden; }
-          .print-area, .print-area * { visibility: visible; }
-          .print-area { display: block; position: absolute; left: 0; top: 0; }
-          .poster-page { page-break-after: always; }
+          aside, header, .no-print { display: none !important; }
+          html, body { height: auto !important; overflow: visible !important; display: block !important; background: white !important; }
+          body > div, main { overflow: visible !important; height: auto !important; display: block !important; }
+          main { padding: 0 !important; }
+          .print-area { display: block; margin: 0 !important; }
+          .poster-page { page-break-after: always; break-inside: avoid; }
         }
       `}</style>
 
@@ -675,30 +685,27 @@ export default function DistributePage() {
         {/* プレビュー */}
         <div className="w-[380px] shrink-0">
           <p className="text-xs text-muted-foreground mb-2">
-            プレビュー{previewStore ? `（${previewStore.title}）` : "（店舗を選択してください）"}
+            プレビュー
+            {selectedPreviewStore
+              ? `（${selectedPreviewStore.title}）`
+              : "（見本 — 出力時は各店舗の名前・電話番号・QRが入ります）"}
           </p>
           <div className="border rounded-lg bg-gray-100 p-3 overflow-hidden">
-            {previewStore ? (
-              <div
-                style={{
-                  transform: tab === "poster" ? "scale(0.42)" : "scale(0.42)",
-                  transformOrigin: "top left",
-                  width: tab === "poster" ? (size === "A4" ? "210mm" : "182mm") : "210mm",
-                  height: "0",
-                  paddingBottom: tab === "poster" ? (size === "A4" ? "125mm" : "108mm") : "125mm",
-                }}
-              >
-                {tab === "poster" ? (
-                  <Poster store={previewStore} qr={previewQr} />
-                ) : (
-                  <CardSheet store={previewStore} qr={previewQr} />
-                )}
-              </div>
-            ) : (
-              <div className="h-64 flex items-center justify-center text-sm text-gray-400">
-                店舗を選択するとプレビューが表示されます
-              </div>
-            )}
+            <div
+              style={{
+                transform: "scale(0.42)",
+                transformOrigin: "top left",
+                width: tab === "poster" ? (size === "A4" ? "210mm" : "182mm") : "210mm",
+                height: "0",
+                paddingBottom: tab === "poster" ? (size === "A4" ? "125mm" : "108mm") : "125mm",
+              }}
+            >
+              {tab === "poster" ? (
+                <Poster store={previewStore} qr={previewQr} />
+              ) : (
+                <CardSheet store={previewStore} qr={previewQr} />
+              )}
+            </div>
           </div>
         </div>
       </div>

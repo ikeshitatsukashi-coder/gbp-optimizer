@@ -242,7 +242,7 @@ export default function SurveysPage() {
                   <td className="px-3 py-2">
                     <button
                       onClick={() => toggleStatus(row)}
-                      className={`text-xs px-2 py-0.5 rounded ${
+                      className={`text-xs px-2 py-0.5 rounded whitespace-nowrap ${
                         row.status === "active"
                           ? "bg-green-100 text-green-700"
                           : "bg-gray-200 text-gray-600"
