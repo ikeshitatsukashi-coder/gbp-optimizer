@@ -1,7 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { X, Search, Loader2, ImageIcon, Cloud, CheckCircle2 } from "lucide-react"
+import {
+  X,
+  Search,
+  Loader2,
+  ImageIcon,
+  Cloud,
+  CheckCircle2,
+  Copy,
+  Trash2,
+} from "lucide-react"
 import { resizeImageForGbp } from "@/lib/image-resize"
 
 interface MediaItem {
@@ -11,6 +20,13 @@ interface MediaItem {
   sourceUrl?: string
   createTime?: string
   locationAssociation?: { category?: string }
+}
+
+interface ArchiveImage {
+  url: string
+  pathname: string
+  size: number
+  uploadedAt: string
 }
 
 interface UploadingFile {
@@ -23,17 +39,24 @@ interface Props {
   isOpen: boolean
   onClose: () => void
   locationName: string | null
-  /** 選択された画像 URL 群を返す（アップロードタブは複数、ライブラリも複数選択可） */
-  onSelect: (urls: string[]) => void
+  /** 選択された画像 URL 群を返す（manageモードでは不要） */
+  onSelect?: (urls: string[]) => void
   /** 選択できる残り枚数（投稿の最大10枚制限を呼び出し側から伝える） */
   maxCount?: number
+  /**
+   * select: 投稿に添付する画像を選ぶ（既定）
+   * manage: 画像アーカイブの閲覧・アップロード・URLコピー・削除
+   */
+  mode?: "select" | "manage"
 }
 
+type TabKey = "upload" | "archive" | "library"
+
 /**
- * 画像を選ぶモーダル。
- * - タブ1: 画像をアップロード — ローカルファイル（複数可）を 2540×1430 以内に
- *   自動リサイズして Vercel Blob にアップロード → 公開 URL を返す
- * - タブ2: 画像ライブラリ — 店舗の既存写真から複数選択
+ * 画像モーダル。
+ * - アップロード: ローカルファイルを自動リサイズして Vercel Blob に保存
+ * - アーカイブ: アップロード済み画像の一覧（選択・URLコピー・削除）
+ * - GBP上の写真: 店舗がGoogleに掲載済みの写真から選択
  */
 export function ImageLibraryModal({
   isOpen,
@@ -41,16 +64,20 @@ export function ImageLibraryModal({
   locationName,
   onSelect,
   maxCount = 10,
+  mode = "select",
 }: Props) {
-  const [tab, setTab] = useState<"upload" | "library">("upload")
+  const [tab, setTab] = useState<TabKey>(mode === "manage" ? "archive" : "upload")
   const [inputUrl, setInputUrl] = useState("")
   const [media, setMedia] = useState<MediaItem[]>([])
+  const [archive, setArchive] = useState<ArchiveImage[]>([])
+  const [archiveLoading, setArchiveLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [dragOver, setDragOver] = useState(false)
   const [uploads, setUploads] = useState<UploadingFile[]>([])
-  const [librarySelected, setLibrarySelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchMedia = useCallback(async () => {
@@ -74,29 +101,52 @@ export function ImageLibraryModal({
     }
   }, [locationName])
 
+  const fetchArchive = useCallback(async () => {
+    setArchiveLoading(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/upload")
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+      setArchive(Array.isArray(j.images) ? j.images : [])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setArchiveLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (isOpen && tab === "library") fetchMedia()
-  }, [isOpen, tab, fetchMedia])
+    if (isOpen && tab === "archive") fetchArchive()
+  }, [isOpen, tab, fetchMedia, fetchArchive])
 
   useEffect(() => {
     if (isOpen) {
       setUploads([])
-      setLibrarySelected(new Set())
+      setSelected(new Set())
       setError(null)
+      setTab(mode === "manage" ? "archive" : "upload")
     }
-  }, [isOpen])
+  }, [isOpen, mode])
 
   if (!isOpen) return null
 
-  const filtered = search.trim()
+  const filteredMedia = search.trim()
     ? media.filter((m) =>
         (m.name ?? "").toLowerCase().includes(search.trim().toLowerCase())
       )
     : media
 
+  const filteredArchive = search.trim()
+    ? archive.filter((a) =>
+        a.pathname.toLowerCase().includes(search.trim().toLowerCase())
+      )
+    : archive
+
   const handleUrlPick = () => {
     const u = inputUrl.trim()
-    if (!u) return
+    if (!u || !onSelect) return
     onSelect([u])
     setInputUrl("")
     onClose()
@@ -104,13 +154,14 @@ export function ImageLibraryModal({
 
   /**
    * ローカルファイル群を リサイズ → アップロード。
-   * 全ファイル完了後、成功した URL 群を onSelect でまとめて返す。
+   * selectモード: 完了後そのまま投稿に添付して閉じる
+   * manageモード: アーカイブを更新してアーカイブタブへ
    */
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
     const list = Array.from(files)
       .filter((f) => f.type.startsWith("image/"))
-      .slice(0, maxCount)
+      .slice(0, mode === "manage" ? 30 : maxCount)
     if (list.length === 0) {
       setError("画像ファイルを選択してください")
       return
@@ -122,13 +173,10 @@ export function ImageLibraryModal({
     for (let i = 0; i < list.length; i++) {
       const file = list[i]
       try {
-        // 1. クライアント側リサイズ (2540×1430 以内・JPEG)
         const resized = await resizeImageForGbp(file)
         setUploads((prev) =>
           prev.map((u, idx) => (idx === i ? { ...u, status: "uploading" } : u))
         )
-
-        // 2. Vercel Blob へアップロード
         const fd = new FormData()
         fd.append("file", new File([resized.blob], resized.fileName, { type: "image/jpeg" }))
         const res = await fetch("/api/upload", { method: "POST", body: fd })
@@ -155,18 +203,22 @@ export function ImageLibraryModal({
     }
 
     if (urls.length > 0) {
-      onSelect(urls)
-      // 全部成功したら自動で閉じる。一部失敗ならエラー表示のため開いたまま
-      if (urls.length === list.length) {
-        setTimeout(() => onClose(), 400)
+      if (mode === "manage" || !onSelect) {
+        // アーカイブに反映して一覧タブへ
+        await fetchArchive()
+        setTab("archive")
+      } else {
+        onSelect(urls)
+        if (urls.length === list.length) {
+          setTimeout(() => onClose(), 400)
+        }
       }
     }
   }
 
-  const toggleLibraryPick = (item: MediaItem) => {
-    const url = item.googleUrl || item.sourceUrl || item.thumbnailUrl
+  const toggleSelect = (url: string | undefined) => {
     if (!url) return
-    setLibrarySelected((prev) => {
+    setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(url)) next.delete(url)
       else if (next.size < maxCount) next.add(url)
@@ -174,13 +226,50 @@ export function ImageLibraryModal({
     })
   }
 
-  const confirmLibraryPick = () => {
-    if (librarySelected.size === 0) return
-    onSelect(Array.from(librarySelected))
+  const confirmPick = () => {
+    if (selected.size === 0 || !onSelect) return
+    onSelect(Array.from(selected))
     onClose()
   }
 
+  const copyUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url)
+    setCopiedUrl(url)
+    setTimeout(() => setCopiedUrl(null), 1500)
+  }
+
+  const deleteArchiveImage = async (img: ArchiveImage) => {
+    if (
+      !confirm(
+        "この画像をアーカイブから削除しますか？\n※予約中・投稿済みの投稿がこの画像を使っている場合、表示できなくなります。"
+      )
+    )
+      return
+    try {
+      const res = await fetch(`/api/upload?url=${encodeURIComponent(img.url)}`, {
+        method: "DELETE",
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+      setArchive((prev) => prev.filter((a) => a.url !== img.url))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const uploading = uploads.some((u) => u.status === "resizing" || u.status === "uploading")
+
+  const tabs: { key: TabKey; label: string }[] =
+    mode === "manage"
+      ? [
+          { key: "archive", label: "画像アーカイブ" },
+          { key: "upload", label: "画像をアップロード" },
+        ]
+      : [
+          { key: "upload", label: "画像をアップロード" },
+          { key: "archive", label: "アップロード済みから選ぶ" },
+          { key: "library", label: "GBP上の写真" },
+        ]
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -196,12 +285,7 @@ export function ImageLibraryModal({
         {/* Tabs */}
         <div className="px-6 pt-6 pb-2 border-b border-gray-200">
           <div className="flex gap-6">
-            {(
-              [
-                { key: "upload", label: "画像をアップロード" },
-                { key: "library", label: "画像ライブラリ" },
-              ] as const
-            ).map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
@@ -219,7 +303,7 @@ export function ImageLibraryModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6">
-          {tab === "upload" ? (
+          {tab === "upload" && (
             <div className="space-y-4">
               {/* Drop zone */}
               <div
@@ -262,7 +346,9 @@ export function ImageLibraryModal({
                     onChange={(e) => handleFiles(e.target.files)}
                   />
                   <p className="text-xs text-gray-500">
-                    複数選択可（最大{maxCount}枚）。2540×1430px を超える画像は自動でリサイズされます。
+                    {mode === "manage"
+                      ? "複数選択可（一度に最大30枚）。アップロード後はアーカイブに保存され、投稿時にいつでも使えます。"
+                      : `複数選択可（最大${maxCount}枚）。2540×1430px を超える画像は自動でリサイズされます。`}
                   </p>
                 </div>
               </div>
@@ -294,29 +380,31 @@ export function ImageLibraryModal({
                 </div>
               )}
 
-              {/* URL 入力（補助手段） */}
-              <div className="border rounded p-4 bg-white">
-                <p className="text-xs text-gray-500 mb-2">
-                  または、公開URLを直接指定して選択:
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={inputUrl}
-                    onChange={(e) => setInputUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleUrlPick()}
-                    placeholder="https://example.com/photo.jpg"
-                    className="flex-1 h-9 px-3 text-sm border rounded"
-                  />
-                  <button
-                    onClick={handleUrlPick}
-                    disabled={!inputUrl.trim()}
-                    className="text-sm text-white bg-[#4a90e2] disabled:opacity-40 rounded px-4 hover:bg-[#3a7cc8]"
-                  >
-                    選択
-                  </button>
+              {/* URL 入力（selectモードのみの補助手段） */}
+              {mode === "select" && (
+                <div className="border rounded p-4 bg-white">
+                  <p className="text-xs text-gray-500 mb-2">
+                    または、公開URLを直接指定して選択:
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={inputUrl}
+                      onChange={(e) => setInputUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleUrlPick()}
+                      placeholder="https://example.com/photo.jpg"
+                      className="flex-1 h-9 px-3 text-sm border rounded"
+                    />
+                    <button
+                      onClick={handleUrlPick}
+                      disabled={!inputUrl.trim()}
+                      className="text-sm text-white bg-[#4a90e2] disabled:opacity-40 rounded px-4 hover:bg-[#3a7cc8]"
+                    >
+                      選択
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {error && (
                 <div className="text-sm text-red-800 bg-red-50 border border-red-200 rounded p-3">
@@ -331,7 +419,121 @@ export function ImageLibraryModal({
                 </p>
               </div>
             </div>
-          ) : (
+          )}
+
+          {tab === "archive" && (
+            <div className="space-y-3">
+              <div className="flex gap-2 items-center">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full h-9 pl-8 pr-3 text-sm border rounded"
+                    placeholder="ファイル名で絞り込み"
+                  />
+                </div>
+                <span className="text-xs text-gray-500 whitespace-nowrap">
+                  全 {archive.length} 枚
+                </span>
+              </div>
+
+              {archiveLoading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
+                  <Loader2 className="h-4 w-4 animate-spin" /> 読み込み中…
+                </div>
+              )}
+
+              {error && (
+                <div className="text-sm text-red-800 bg-red-50 border border-red-200 rounded p-3">
+                  {error}
+                </div>
+              )}
+
+              {!archiveLoading && !error && filteredArchive.length === 0 && (
+                <div className="text-center py-10 text-muted-foreground">
+                  <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">
+                    アップロード済みの画像がまだありません。「画像をアップロード」タブから追加してください。
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {filteredArchive.map((img) => {
+                  const isPicked = selected.has(img.url)
+                  const fileName = img.pathname.split("/").pop() ?? ""
+                  // 先頭のタイムスタンプを除いた表示名
+                  const displayName = fileName.replace(/^\d{13}-/, "")
+                  return (
+                    <div
+                      key={img.url}
+                      className={`text-left border rounded overflow-hidden transition-all relative group ${
+                        isPicked
+                          ? "border-[#4a90e2] ring-2 ring-[#4a90e2]/40 shadow"
+                          : "hover:shadow-md hover:border-[#4a90e2]"
+                      }`}
+                    >
+                      <button
+                        onClick={() => mode === "select" && toggleSelect(img.url)}
+                        className="block w-full"
+                        style={{ cursor: mode === "select" ? "pointer" : "default" }}
+                      >
+                        <div className="aspect-square bg-gray-100 relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={img.url}
+                            alt={displayName}
+                            loading="lazy"
+                            className="w-full h-full object-cover"
+                          />
+                          {isPicked && (
+                            <div className="absolute top-1 right-1 bg-[#4a90e2] rounded-full p-0.5">
+                              <CheckCircle2 className="h-4 w-4 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                      <div className="px-2 py-1.5">
+                        <p className="text-xs font-medium truncate" title={displayName}>
+                          {displayName}
+                        </p>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <p className="text-[11px] text-gray-500">
+                            {new Date(img.uploadedAt).toLocaleDateString("ja-JP")}・
+                            {Math.round(img.size / 1024)}KB
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => copyUrl(img.url)}
+                              className="text-gray-400 hover:text-[#4a90e2]"
+                              title="URLをコピー"
+                            >
+                              {copiedUrl === img.url ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => deleteArchiveImage(img)}
+                              className="text-gray-400 hover:text-red-500"
+                              title="削除"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {tab === "library" && (
             <div className="space-y-3">
               {/* Search */}
               <div className="flex gap-2">
@@ -368,7 +570,7 @@ export function ImageLibraryModal({
                 </div>
               )}
 
-              {!loading && !error && locationName && filtered.length === 0 && (
+              {!loading && !error && locationName && filteredMedia.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">画像がありません</p>
@@ -377,15 +579,15 @@ export function ImageLibraryModal({
 
               {/* Grid（複数選択） */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {filtered.map((m) => {
+                {filteredMedia.map((m) => {
                   const src = m.thumbnailUrl || m.googleUrl || m.sourceUrl
                   const url = m.googleUrl || m.sourceUrl || m.thumbnailUrl
                   const label = m.name ? m.name.split("/").pop() : ""
-                  const isPicked = url ? librarySelected.has(url) : false
+                  const isPicked = url ? selected.has(url) : false
                   return (
                     <button
                       key={m.name}
-                      onClick={() => toggleLibraryPick(m)}
+                      onClick={() => toggleSelect(url)}
                       className={`text-left border rounded overflow-hidden transition-all relative ${
                         isPicked
                           ? "border-[#4a90e2] ring-2 ring-[#4a90e2]/40 shadow"
@@ -421,15 +623,15 @@ export function ImageLibraryModal({
           )}
         </div>
 
-        {/* Footer（ライブラリタブ: まとめて追加） */}
-        {tab === "library" && (
+        {/* Footer（selectモード: アーカイブ/GBP写真からまとめて追加） */}
+        {mode === "select" && (tab === "archive" || tab === "library") && (
           <div className="border-t px-6 py-3 flex items-center justify-between bg-gray-50">
             <span className="text-sm text-gray-600">
-              {librarySelected.size} / {maxCount} 枚選択中
+              {selected.size} / {maxCount} 枚選択中
             </span>
             <button
-              onClick={confirmLibraryPick}
-              disabled={librarySelected.size === 0}
+              onClick={confirmPick}
+              disabled={selected.size === 0}
               className="text-sm text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded px-6 py-2 disabled:opacity-40"
             >
               選択した画像を追加
