@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { useGbp } from "@/lib/store"
 import { ImageLibraryModal } from "@/components/gbp/image-library-modal"
+import { resizeImageForGbp } from "@/lib/image-resize"
 
 interface GbpPost {
   name: string
@@ -134,6 +135,42 @@ export default function PostsPage() {
   const [showNewModal, setShowNewModal] = useState(false)
   const [importing, setImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 画像ファイルアップロード（リサイズ→Blob保存→URL発行）
+  const imageUploadInputRef = useRef<HTMLInputElement>(null)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [uploadResult, setUploadResult] = useState<{
+    files: { name: string; url: string }[]
+    errors: string[]
+  } | null>(null)
+  const [copiedUploadUrl, setCopiedUploadUrl] = useState<string | null>(null)
+
+  const handleImageFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ""
+    if (files.length === 0) return
+    setImageUploading(true)
+    const results: { name: string; url: string }[] = []
+    const errors: string[] = []
+    for (const file of files) {
+      try {
+        const resized = await resizeImageForGbp(file)
+        const fd = new FormData()
+        fd.append(
+          "file",
+          new File([resized.blob], resized.fileName, { type: "image/jpeg" })
+        )
+        const res = await fetch("/api/upload", { method: "POST", body: fd })
+        const j = await res.json()
+        if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+        results.push({ name: file.name, url: j.url })
+      } catch (err) {
+        errors.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    setImageUploading(false)
+    setUploadResult({ files: results, errors })
+  }
 
   const loadPublished = useCallback(async () => {
     if (!locationName) {
@@ -468,12 +505,26 @@ export default function PostsPage() {
         </div>
 
         <button
-          onClick={() => fileInputRef.current?.click()}
-          className="h-9 px-4 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 flex items-center gap-1.5"
+          onClick={() => imageUploadInputRef.current?.click()}
+          disabled={imageUploading}
+          className="h-9 px-4 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 flex items-center gap-1.5 disabled:opacity-60"
+          title="投稿用の画像をアップロードしてURLを発行します（一括インポートのメディアURL列に使えます）"
         >
-          <Upload className="h-3.5 w-3.5" />
+          {imageUploading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Upload className="h-3.5 w-3.5" />
+          )}
           ファイルアップロード
         </button>
+        <input
+          ref={imageUploadInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleImageFiles}
+          className="hidden"
+        />
 
         <button
           onClick={handleDownload}
@@ -745,6 +796,81 @@ export default function PostsPage() {
         defaultLocationName={locationName}
         duplicateFrom={duplicateSourceRef.current}
       />
+
+      {/* 画像アップロード結果モーダル */}
+      {uploadResult && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-5 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold">
+                画像アップロード完了（{uploadResult.files.length}枚）
+              </h2>
+              <button
+                onClick={() => setUploadResult(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+              画像は自動でリサイズ（最大2540×1430px）して保存済みです。
+              一括インポート用EXCELの「メディアURL」列にURLを貼り付けると画像付き投稿になります。
+              1件ずつ投稿する場合は「新規投稿」画面の画像追加からも選択できます。
+            </p>
+            {uploadResult.errors.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded p-3 mb-3">
+                {uploadResult.errors.map((er, i) => (
+                  <p key={i} className="text-xs text-red-700">
+                    {er}
+                  </p>
+                ))}
+              </div>
+            )}
+            <div className="space-y-2">
+              {uploadResult.files.map((f) => (
+                <div key={f.url} className="flex items-center gap-3 border rounded p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={f.url}
+                    alt={f.name}
+                    className="w-14 h-14 object-cover rounded shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{f.name}</p>
+                    <p className="text-[11px] text-gray-400 truncate">{f.url}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(f.url)
+                      setCopiedUploadUrl(f.url)
+                      setTimeout(() => setCopiedUploadUrl(null), 1500)
+                    }}
+                    className="text-xs text-[#4a90e2] hover:underline shrink-0"
+                  >
+                    {copiedUploadUrl === f.url ? "コピー済み" : "URLコピー"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {uploadResult.files.length > 1 && (
+              <button
+                onClick={async () => {
+                  await navigator.clipboard.writeText(
+                    uploadResult.files.map((f) => f.url).join("\n")
+                  )
+                  setCopiedUploadUrl("__all__")
+                  setTimeout(() => setCopiedUploadUrl(null), 1500)
+                }}
+                className="mt-3 text-sm text-[#4a90e2] hover:underline"
+              >
+                {copiedUploadUrl === "__all__"
+                  ? "コピーしました"
+                  : "すべてのURLをコピー（1行1URL）"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
