@@ -4,6 +4,7 @@ import { scheduledPosts, stores } from "@/lib/db/schema"
 import { getAccessToken } from "@/lib/get-session"
 import { inArray } from "drizzle-orm"
 import { errorResponse } from "@/lib/api-helpers"
+import { normalizeSearchText } from "@/lib/search-normalize"
 import * as XLSX from "xlsx"
 
 /**
@@ -26,7 +27,14 @@ const HEADER_ALIASES: Record<string, string> = {
   locationname: "locationName",
   location_name: "locationName",
   店舗id: "locationName",
+  ロケーションid: "locationName",
+  locationid: "locationName",
   店舗名: "storeName",
+  店舗: "storeName",
+  店名: "storeName",
+  会社名: "storeName",
+  ビジネス名: "storeName",
+  事業所名: "storeName",
   storename: "storeName",
   store_name: "storeName",
   scheduledfor: "scheduledFor",
@@ -117,6 +125,44 @@ export async function POST(request: Request) {
       .from(stores)
     const byTitle = new Map(allStores.map((s) => [s.title, s.locationName]))
     const validLocationNames = new Set(allStores.map((s) => s.locationName))
+    // locations/ を除いた純粋なID → locationName（ID列に数字だけが入っていても照合可能に）
+    const byBareId = new Map(
+      allStores.map((s) => [s.locationName.replace(/^locations\//, ""), s.locationName])
+    )
+    // あいまい店舗名照合（中黒・スペース・全角半角の違いを吸収）
+    const byNormTitle = new Map<string, string[]>()
+    for (const s of allStores) {
+      const key = normalizeSearchText(s.title)
+      const arr = byNormTitle.get(key)
+      if (arr) arr.push(s.locationName)
+      else byNormTitle.set(key, [s.locationName])
+    }
+
+    /** 店舗名 or ID から locationName を解決 */
+    const resolveLocation = (
+      locRaw: unknown,
+      storeNameRaw: unknown
+    ): string | null => {
+      // 1) locationName / 店舗ID 列
+      if (typeof locRaw === "string" && locRaw.trim()) {
+        const cleaned = locRaw.trim()
+        const withPrefix = cleaned.startsWith("locations/")
+          ? cleaned
+          : `locations/${cleaned}`
+        if (validLocationNames.has(withPrefix)) return withPrefix
+        const bare = cleaned.replace(/^locations\//, "")
+        if (byBareId.has(bare)) return byBareId.get(bare)!
+      }
+      // 2) 店舗名 列（完全一致 → あいまい一致）
+      if (typeof storeNameRaw === "string" && storeNameRaw.trim()) {
+        const name = storeNameRaw.trim()
+        if (byTitle.has(name)) return byTitle.get(name)!
+        const norm = normalizeSearchText(name)
+        const hit = byNormTitle.get(norm)
+        if (hit && hit.length === 1) return hit[0]
+      }
+      return null
+    }
 
     const errors: Array<{ rowIndex: number; error: string; rowData: unknown }> = []
     const toInsert: Array<{
@@ -135,20 +181,16 @@ export async function POST(request: Request) {
       const dateRaw = pickField(row, "scheduledFor")
       const summaryRaw = pickField(row, "summary")
 
-      // location 特定: locationName 直接 or storeName から
-      let locationName: string | null = null
-      if (typeof locRaw === "string" && locRaw.trim()) {
-        const cleaned = locRaw.trim()
-        locationName = cleaned.startsWith("locations/")
-          ? cleaned
-          : `locations/${cleaned}`
-      } else if (typeof storeNameRaw === "string" && storeNameRaw.trim()) {
-        locationName = byTitle.get(storeNameRaw.trim()) ?? null
-      }
-      if (!locationName || !validLocationNames.has(locationName)) {
+      // location 特定: locationName 直接 or storeName から（あいまい照合あり）
+      const locationName = resolveLocation(locRaw, storeNameRaw)
+      if (!locationName) {
+        const shown =
+          (typeof storeNameRaw === "string" && storeNameRaw.trim()) ||
+          (typeof locRaw === "string" && locRaw.trim()) ||
+          "（店舗名・店舗ID列が空）"
         errors.push({
           rowIndex,
-          error: `店舗が特定できません（locationName / 店舗名 が正しいか確認）`,
+          error: `店舗が特定できません: 「${shown}」`,
           rowData: row,
         })
         return
