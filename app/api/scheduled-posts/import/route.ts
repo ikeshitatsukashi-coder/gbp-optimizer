@@ -3,7 +3,10 @@ import { db } from "@/lib/db"
 import { scheduledPosts, stores } from "@/lib/db/schema"
 import { getAccessToken } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
-import { importScheduledRows } from "@/lib/services/import-scheduled-rows"
+import {
+  importScheduledRows,
+  type ColumnMapping,
+} from "@/lib/services/import-scheduled-rows"
 import * as XLSX from "xlsx"
 
 /**
@@ -20,15 +23,20 @@ export async function POST(request: Request) {
   }
 
   let rows: Record<string, unknown>[] = []
+  let mapping: ColumnMapping | undefined
   const contentType = request.headers.get("content-type") ?? ""
 
   try {
     if (contentType.includes("application/json")) {
-      const body = (await request.json()) as { rows?: Record<string, unknown>[] }
+      const body = (await request.json()) as {
+        rows?: Record<string, unknown>[]
+        mapping?: ColumnMapping
+      }
       if (!Array.isArray(body.rows)) {
         return NextResponse.json({ error: "rows 配列が必要です" }, { status: 400 })
       }
       rows = body.rows
+      mapping = body.mapping
     } else {
       const formData = await request.formData()
       const f = formData.get("file")
@@ -51,7 +59,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await importScheduledRows(rows)
+    const result = await importScheduledRows(rows, mapping)
     return NextResponse.json(result)
   } catch (e) {
     return errorResponse("Failed to import", e)

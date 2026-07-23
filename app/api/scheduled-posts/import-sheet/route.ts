@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import { getAccessToken } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
-import { importScheduledRows } from "@/lib/services/import-scheduled-rows"
+import {
+  importScheduledRows,
+  suggestMapping,
+  type ColumnMapping,
+} from "@/lib/services/import-scheduled-rows"
 
 /**
  * POST /api/scheduled-posts/import-sheet
@@ -25,7 +29,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
 
-  let body: { url?: string; gid?: string }
+  let body: { url?: string; gid?: string; preview?: boolean; mapping?: ColumnMapping }
   try {
     body = await request.json()
   } catch {
@@ -120,8 +124,20 @@ export async function POST(request: Request) {
       return obj
     })
 
-    // 4) 既存のインポートロジックで登録
-    const result = await importScheduledRows(rows)
+    // 4a) プレビュー: 取り込まず、見出し・サンプル・推定マッピングを返す（列対応づけUI用）
+    if (body.preview) {
+      return NextResponse.json({
+        preview: true,
+        sheetTitle,
+        headers: header.filter(Boolean),
+        rowCount: rows.length,
+        sampleRows: rows.slice(0, 3),
+        suggestedMapping: suggestMapping(header.filter(Boolean)),
+      })
+    }
+
+    // 4b) 本取り込み（列マッピングがあれば適用）
+    const result = await importScheduledRows(rows, body.mapping)
     return NextResponse.json({ sheetTitle, ...result })
   } catch (e) {
     return errorResponse("Failed to import from sheet", e)

@@ -61,7 +61,23 @@ function normalizeKey(k: string): string {
   return k.toLowerCase().replace(/[\s_-]/g, "").replace(/[()（）\[\]]/g, "")
 }
 
-function pickField(row: Record<string, unknown>, canonical: string): unknown {
+/** canonical フィールド → シートの見出し名 の明示マッピング（列対応づけUI由来） */
+export type ColumnMapping = Partial<Record<string, string>>
+
+function pickField(
+  row: Record<string, unknown>,
+  canonical: string,
+  mapping?: ColumnMapping
+): unknown {
+  // 明示マッピングがあれば最優先
+  if (mapping && mapping[canonical]) {
+    const header = mapping[canonical]!
+    if (header in row) return row[header]
+    // 見出しの前後空白ゆらぎに対応
+    for (const [k, v] of Object.entries(row)) {
+      if (k.trim() === header.trim()) return v
+    }
+  }
   const target = canonical.toLowerCase()
   for (const [rawKey, val] of Object.entries(row)) {
     const norm = normalizeKey(rawKey)
@@ -71,8 +87,67 @@ function pickField(row: Record<string, unknown>, canonical: string): unknown {
   return undefined
 }
 
+/** 見出し配列から canonical フィールドを推定（マッピングUIの初期値用） */
+export function suggestMapping(headers: string[]): ColumnMapping {
+  const result: ColumnMapping = {}
+  for (const h of headers) {
+    const norm = normalizeKey(h)
+    const canonical = HEADER_ALIASES[norm]
+    if (canonical && !result[canonical]) result[canonical] = h
+  }
+  return result
+}
+
 const VALID_POST_TYPES = ["STANDARD", "EVENT", "OFFER", "ALERT"]
 const VALID_CTA = ["BOOK", "ORDER", "SHOP", "LEARN_MORE", "SIGN_UP", "CALL"]
+
+/**
+ * 各種フォーマットの日時をゆるくパースする。
+ * 対応: ISO / "2026-07-15 10:00" / "2026/07/15" / "2026年7月15日 10時" /
+ *       Excelシリアル値(数値) / Date型
+ */
+function parseDateFlexible(raw: unknown): Date | null {
+  if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw
+
+  // Excel シリアル値（1900/1/1 起点）
+  if (typeof raw === "number" && raw > 0 && raw < 100000) {
+    const ms = Math.round((raw - 25569) * 86400 * 1000)
+    const d = new Date(ms)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  if (typeof raw !== "string") return null
+  let s = raw.trim()
+  if (!s) return null
+
+  // 全角数字・記号を半角へ
+  s = s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+
+  // 和暦風「2026年7月15日 10時30分」→ "2026-07-15 10:30"
+  const jp = s.match(
+    /(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日?\s*(?:(\d{1,2})時\s*(?:(\d{1,2})分?)?)?/
+  )
+  if (jp) {
+    const [, y, mo, da, hh = "0", mi = "0"] = jp
+    const d = new Date(
+      Number(y),
+      Number(mo) - 1,
+      Number(da),
+      Number(hh),
+      Number(mi)
+    )
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  // "2026/07/15 10:00" / "2026-07-15T10:00" / "2026.07.15" などを正規化
+  const norm = s.replace(/[./]/g, "-").replace(/\s+/, " ")
+  let d = new Date(norm)
+  if (!isNaN(d.getTime())) return d
+
+  // 時刻なし日付にT00:00を補って再試行
+  d = new Date(norm.replace(" ", "T"))
+  return isNaN(d.getTime()) ? null : d
+}
 
 export interface ImportResult {
   success: true
@@ -82,7 +157,8 @@ export interface ImportResult {
 }
 
 export async function importScheduledRows(
-  rows: Record<string, unknown>[]
+  rows: Record<string, unknown>[],
+  mapping?: ColumnMapping
 ): Promise<ImportResult> {
   const allStores = await db
     .select({ locationName: stores.locationName, title: stores.title })
@@ -132,10 +208,10 @@ export async function importScheduledRows(
 
   rows.forEach((row, idx) => {
     const rowIndex = idx + 2 // 1 = 見出し
-    const locRaw = pickField(row, "locationName")
-    const storeNameRaw = pickField(row, "storeName")
-    const dateRaw = pickField(row, "scheduledFor")
-    const summaryRaw = pickField(row, "summary")
+    const locRaw = pickField(row, "locationName", mapping)
+    const storeNameRaw = pickField(row, "storeName", mapping)
+    const dateRaw = pickField(row, "scheduledFor", mapping)
+    const summaryRaw = pickField(row, "summary", mapping)
 
     const locationName = resolveLocation(locRaw, storeNameRaw)
     if (!locationName) {
@@ -147,18 +223,15 @@ export async function importScheduledRows(
       return
     }
 
-    let scheduledFor: Date | null = null
-    if (typeof dateRaw === "string") {
-      const s = dateRaw.trim().replace(/\//g, "-")
-      const d = new Date(s)
-      if (!isNaN(d.getTime())) scheduledFor = d
-    } else if (dateRaw instanceof Date) {
-      scheduledFor = dateRaw
-    }
-    if (!scheduledFor || isNaN(scheduledFor.getTime())) {
+    const scheduledFor = parseDateFlexible(dateRaw)
+    if (!scheduledFor) {
+      const shown =
+        dateRaw === undefined || dateRaw === null || dateRaw === ""
+          ? "（日時の列が空、または列が未対応）"
+          : JSON.stringify(dateRaw)
       errors.push({
         rowIndex,
-        error: `予約日時のパース失敗 (${JSON.stringify(dateRaw)})`,
+        error: `予約日時を読み取れません: ${shown}`,
         rowData: row,
       })
       return
@@ -171,19 +244,19 @@ export async function importScheduledRows(
     }
 
     let postType = "STANDARD"
-    const pt = pickField(row, "postType")
+    const pt = pickField(row, "postType", mapping)
     if (typeof pt === "string" && pt.trim()) {
       const upper = pt.trim().toUpperCase()
       if (VALID_POST_TYPES.includes(upper)) postType = upper
     }
 
-    const mediaUrl = pickField(row, "mediaUrl")
+    const mediaUrl = pickField(row, "mediaUrl", mapping)
     const mediaUrls =
       typeof mediaUrl === "string" && mediaUrl.trim() ? [mediaUrl.trim()] : null
 
     let callToAction: { actionType: string; url?: string } | null = null
-    const ctaTypeRaw = pickField(row, "ctaType")
-    const ctaUrlRaw = pickField(row, "ctaUrl")
+    const ctaTypeRaw = pickField(row, "ctaType", mapping)
+    const ctaUrlRaw = pickField(row, "ctaUrl", mapping)
     if (typeof ctaTypeRaw === "string" && ctaTypeRaw.trim()) {
       const upper = ctaTypeRaw.trim().toUpperCase()
       if (VALID_CTA.includes(upper)) {

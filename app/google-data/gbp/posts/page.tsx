@@ -139,13 +139,74 @@ export default function PostsPage() {
   // 画像アーカイブ（アップロード済み画像の閲覧・追加・削除）
   const [imageManagerOpen, setImageManagerOpen] = useState(false)
 
-  // スプレッドシート直接取り込み
+  // スプレッドシート直接取り込み（URL入力 → 列対応づけ → 取り込み）
   const [sheetModalOpen, setSheetModalOpen] = useState(false)
   const [sheetUrl, setSheetUrl] = useState("")
+  const [sheetStep, setSheetStep] = useState<"url" | "map">("url")
+  const [sheetPreview, setSheetPreview] = useState<{
+    headers: string[]
+    sampleRows: Record<string, unknown>[]
+    rowCount: number
+    sheetTitle?: string
+  } | null>(null)
+  const [sheetMapping, setSheetMapping] = useState<Record<string, string>>({})
 
-  const handleSheetImport = async () => {
+  const openSheetModal = () => {
+    setSheetStep("url")
+    setSheetPreview(null)
+    setSheetMapping({})
+    setSheetModalOpen(true)
+  }
+
+  // ステップ1: プレビュー取得（見出し・推定マッピング）
+  const handleSheetPreview = async () => {
     if (!sheetUrl.trim()) {
       setError("スプレッドシートのURLを入力してください")
+      return
+    }
+    setImporting(true)
+    setError(null)
+    try {
+      const { ok, data, error } = await fetchJson<{
+        headers: string[]
+        sampleRows: Record<string, unknown>[]
+        rowCount: number
+        sheetTitle?: string
+        suggestedMapping: Record<string, string>
+      }>("/api/scheduled-posts/import-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: sheetUrl.trim(), preview: true }),
+      })
+      if (!ok || !data) throw new Error(error ?? "シートを読み取れませんでした")
+      setSheetPreview({
+        headers: data.headers,
+        sampleRows: data.sampleRows,
+        rowCount: data.rowCount,
+        sheetTitle: data.sheetTitle,
+      })
+      setSheetMapping(data.suggestedMapping ?? {})
+      setSheetStep("map")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  // ステップ2: マッピングを適用して本取り込み
+  const handleSheetImport = async () => {
+    // 必須チェック: (店舗名 or 店舗ID) / 予約日時 / 本文
+    if (!sheetMapping.storeName && !sheetMapping.locationName) {
+      setError("「店舗名」または「店舗ID」の列を選択してください")
+      return
+    }
+    if (!sheetMapping.scheduledFor) {
+      setError("「予約日時」の列を選択してください")
+      return
+    }
+    if (!sheetMapping.summary) {
+      setError("「本文」の列を選択してください")
       return
     }
     setImporting(true)
@@ -160,7 +221,7 @@ export default function PostsPage() {
       }>("/api/scheduled-posts/import-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: sheetUrl.trim() }),
+        body: JSON.stringify({ url: sheetUrl.trim(), mapping: sheetMapping }),
       })
       if (!ok || !data) throw new Error(error ?? "取り込みに失敗しました")
       setSheetModalOpen(false)
@@ -509,7 +570,7 @@ export default function PostsPage() {
                 <button
                   onClick={() => {
                     setImportDropdownOpen(false)
-                    setSheetModalOpen(true)
+                    openSheetModal()
                   }}
                   className="w-full text-left text-sm px-4 py-2 hover:bg-gray-50 font-medium text-[#4a90e2]"
                 >
@@ -833,12 +894,15 @@ export default function PostsPage() {
         mode="manage"
       />
 
-      {/* スプレッドシート直接取り込み */}
+      {/* スプレッドシート直接取り込み（2ステップ） */}
       {sheetModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-5">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold">スプレッドシートから取り込む</h2>
+              <h2 className="text-lg font-bold">
+                スプレッドシートから取り込む
+                {sheetStep === "map" && "（列の対応づけ）"}
+              </h2>
               <button
                 onClick={() => setSheetModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -846,47 +910,153 @@ export default function PostsPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <p className="text-xs text-gray-600 mb-3 leading-relaxed">
-              Googleスプレッドシートの共有リンクを貼り付けてください。ダウンロード不要で直接読み込みます。
-              <br />
-              ※ログイン中のGoogleアカウント（meo-support@li-go.jp）がそのシートを開ける必要があります。
-              取り込むシートを指定する場合は、そのシートを開いた状態のURL（末尾に <code className="bg-gray-100 px-1 rounded">#gid=…</code> が付く）を貼り付けてください。
-            </p>
-            <label className="block text-sm font-bold mb-1">スプレッドシートURL</label>
-            <input
-              type="url"
-              value={sheetUrl}
-              onChange={(e) => setSheetUrl(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit#gid=0"
-              className="w-full h-10 px-3 text-sm border rounded mb-2"
-              autoFocus
-            />
-            <div className="bg-blue-50 border border-blue-100 rounded p-3 text-xs text-blue-900 mb-4 leading-relaxed">
-              1行目を見出しにしてください。認識できる列名の例：<br />
-              <b>店舗名</b>（または<b>店舗ID</b>）／<b>予約日時</b>（例 2026-07-15 10:00）／<b>本文</b>／投稿タイプ／画像URL／CTA種別／CTAリンク
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setSheetModalOpen(false)}
-                disabled={importing}
-                className="h-10 px-6 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleSheetImport}
-                disabled={importing || !sheetUrl.trim()}
-                className="h-10 px-6 text-sm text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {importing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> 取り込み中…
-                  </>
-                ) : (
-                  "取り込む"
+
+            {sheetStep === "url" ? (
+              <>
+                <p className="text-xs text-gray-600 mb-3 leading-relaxed">
+                  Googleスプレッドシートの共有リンクを貼り付けてください。ダウンロード不要で直接読み込みます。
+                  <br />
+                  ※ログイン中のGoogleアカウント（meo-support@li-go.jp）がそのシートを開ける必要があります。
+                  取り込むシート（タブ）を指定する場合は、そのタブを開いた状態のURL（末尾に{" "}
+                  <code className="bg-gray-100 px-1 rounded">#gid=…</code> が付く）を貼り付けてください。
+                </p>
+                <label className="block text-sm font-bold mb-1">スプレッドシートURL</label>
+                <input
+                  type="url"
+                  value={sheetUrl}
+                  onChange={(e) => setSheetUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit#gid=0"
+                  className="w-full h-10 px-3 text-sm border rounded mb-4"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setSheetModalOpen(false)}
+                    disabled={importing}
+                    className="h-10 px-6 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSheetPreview}
+                    disabled={importing || !sheetUrl.trim()}
+                    className="h-10 px-6 text-sm text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {importing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> 読み取り中…
+                      </>
+                    ) : (
+                      "次へ（列を確認）"
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-gray-600 mb-3 leading-relaxed">
+                  シート「{sheetPreview?.sheetTitle}」（データ {sheetPreview?.rowCount} 行）を読み取りました。
+                  下で、あなたのシートの<b>どの列</b>が各項目に当たるかを選んでください。
+                  <b className="text-red-600">＊</b> は必須です。
+                </p>
+                <div className="space-y-2.5 mb-4">
+                  {(
+                    [
+                      { key: "storeName", label: "店舗名", req: true, note: "または店舗ID" },
+                      { key: "locationName", label: "店舗ID", req: false, note: "locations/… または数字。店舗名を選んだ場合は不要" },
+                      { key: "scheduledFor", label: "予約日時", req: true, note: "例 2026-07-15 10:00 / 2026年7月15日" },
+                      { key: "summary", label: "本文", req: true, note: "" },
+                      { key: "postType", label: "投稿タイプ", req: false, note: "STANDARD/EVENT/OFFER/ALERT。空ならSTANDARD" },
+                      { key: "mediaUrl", label: "画像URL", req: false, note: "" },
+                      { key: "ctaType", label: "CTA種別", req: false, note: "BOOK/ORDER/SHOP/LEARN_MORE/SIGN_UP/CALL" },
+                      { key: "ctaUrl", label: "CTAリンク", req: false, note: "" },
+                    ] as const
+                  ).map((field) => (
+                    <div key={field.key} className="flex items-center gap-3">
+                      <label className="w-28 text-sm font-medium shrink-0">
+                        {field.label}
+                        {field.req && <span className="text-red-600">＊</span>}
+                      </label>
+                      <select
+                        value={sheetMapping[field.key] ?? ""}
+                        onChange={(e) =>
+                          setSheetMapping((prev) => {
+                            const next = { ...prev }
+                            if (e.target.value) next[field.key] = e.target.value
+                            else delete next[field.key]
+                            return next
+                          })
+                        }
+                        className="h-9 px-2 text-sm border rounded flex-1 min-w-0"
+                      >
+                        <option value="">（使わない）</option>
+                        {sheetPreview?.headers.map((h) => (
+                          <option key={h} value={h}>
+                            {h}
+                          </option>
+                        ))}
+                      </select>
+                      {field.note && (
+                        <span className="text-[11px] text-gray-400 w-44 shrink-0 hidden md:block">
+                          {field.note}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* サンプルプレビュー */}
+                {sheetPreview && sheetPreview.sampleRows.length > 0 && (
+                  <div className="border rounded mb-4 overflow-x-auto">
+                    <table className="text-xs w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          {sheetPreview.headers.map((h) => (
+                            <th key={h} className="px-2 py-1.5 text-left font-medium whitespace-nowrap border-b">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sheetPreview.sampleRows.map((r, i) => (
+                          <tr key={i} className="border-b last:border-b-0">
+                            {sheetPreview.headers.map((h) => (
+                              <td key={h} className="px-2 py-1.5 whitespace-nowrap max-w-[160px] truncate text-gray-600">
+                                {String(r[h] ?? "")}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
-              </button>
-            </div>
+
+                <div className="flex justify-between gap-2">
+                  <button
+                    onClick={() => setSheetStep("url")}
+                    disabled={importing}
+                    className="h-10 px-6 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50"
+                  >
+                    ← 戻る
+                  </button>
+                  <button
+                    onClick={handleSheetImport}
+                    disabled={importing}
+                    className="h-10 px-6 text-sm text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {importing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> 取り込み中…
+                      </>
+                    ) : (
+                      "この対応づけで取り込む"
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
