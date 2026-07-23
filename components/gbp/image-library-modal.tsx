@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { resizeImageForGbp } from "@/lib/image-resize"
+import { fetchJson } from "@/lib/fetch-json"
 
 interface MediaItem {
   name?: string
@@ -179,11 +180,13 @@ export function ImageLibraryModal({
         )
         const fd = new FormData()
         fd.append("file", new File([resized.blob], resized.fileName, { type: "image/jpeg" }))
-        const res = await fetch("/api/upload", { method: "POST", body: fd })
-        const j = await res.json()
-        if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+        const { ok, data, error } = await fetchJson<{ url: string }>("/api/upload", {
+          method: "POST",
+          body: fd,
+        })
+        if (!ok || !data?.url) throw new Error(error ?? "アップロードに失敗しました")
 
-        urls.push(j.url)
+        urls.push(data.url)
         setUploads((prev) =>
           prev.map((u, idx) => (idx === i ? { ...u, status: "done" } : u))
         )

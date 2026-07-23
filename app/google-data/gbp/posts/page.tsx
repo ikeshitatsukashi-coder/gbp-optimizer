@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { useGbp } from "@/lib/store"
 import { ImageLibraryModal } from "@/components/gbp/image-library-modal"
+import { fetchJson } from "@/lib/fetch-json"
 
 interface GbpPost {
   name: string
@@ -844,6 +845,15 @@ function NewPostModal({
       ? `${summary.trim()}\n\n${hashtags.trim()}`
       : summary.trim()
 
+    // data:/blob: URL は巨大になりリクエスト上限を超えるため事前に弾く
+    const badUrl = mediaUrls.find((u) => u.startsWith("data:") || u.startsWith("blob:"))
+    if (badUrl) {
+      onError(
+        "画像が正しくアップロードされていません。画像を一度外し、「ファイル選択」から入れ直してください。"
+      )
+      return
+    }
+
     setSubmitting(true)
     try {
       if (asDraft || timing === "scheduled") {
@@ -862,13 +872,12 @@ function NewPostModal({
         if (mediaUrls.length > 0) body.mediaUrls = mediaUrls
         if (callToAction) body.callToAction = callToAction
 
-        const res = await fetch("/api/scheduled-posts", {
+        const { ok, error } = await fetchJson("/api/scheduled-posts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         })
-        const j = await res.json()
-        if (!res.ok) throw new Error(j.detail || j.error || `HTTP ${res.status}`)
+        if (!ok) throw new Error(error ?? "保存に失敗しました")
         onSuccess(asDraft ? "下書きを保存しました" : "予約を作成しました")
       } else {
         // 即時
@@ -884,13 +893,12 @@ function NewPostModal({
             sourceUrl: url,
           }))
         }
-        const res = await fetch("/api/gbp/posts", {
+        const { ok, error } = await fetchJson("/api/gbp/posts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ locationName: store, post }),
         })
-        const j = await res.json()
-        if (!res.ok) throw new Error(j.detail || j.error || `HTTP ${res.status}`)
+        if (!ok) throw new Error(error ?? "投稿に失敗しました")
         onSuccess("投稿しました")
       }
     } catch (e) {
