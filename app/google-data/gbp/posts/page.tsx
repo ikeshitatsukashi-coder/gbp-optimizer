@@ -327,27 +327,43 @@ export default function PostsPage() {
     setError(null)
     setSuccess(null)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      const res = await fetch("/api/scheduled-posts/import", {
+      // xlsx はブラウザ側で解析し、必要な行データ（テキスト）だけを送信する。
+      // ファイル自体を送るとサイズ超過(413)で失敗するため。
+      const XLSX = await import("xlsx")
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: "array" })
+      const sheetName = wb.SheetNames[0]
+      if (!sheetName) throw new Error("シートが見つかりません")
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        wb.Sheets[sheetName],
+        { raw: false, defval: null }
+      )
+      if (rows.length === 0) throw new Error("データ行がありません（1行目は見出し）")
+
+      const { ok, data, error } = await fetchJson<{
+        inserted: number
+        totalRows: number
+        errors?: { rowIndex: number; error: string }[]
+      }>("/api/scheduled-posts/import", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
       })
-      const j = await res.json()
-      if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+      if (!ok || !data) throw new Error(error ?? "インポートに失敗しました")
+
       setSuccess(
-        `インポート完了: 登録 ${j.inserted} / ${j.totalRows} 件${
-          j.errors?.length ? ` / エラー ${j.errors.length} 件` : ""
+        `インポート完了: 登録 ${data.inserted} / ${data.totalRows} 件${
+          data.errors?.length ? ` / エラー ${data.errors.length} 件` : ""
         }`
       )
-      if (j.errors?.length > 0) {
-        const es = j.errors
+      if (data.errors && data.errors.length > 0) {
+        const es = data.errors
           .slice(0, 5)
-          .map((e: { rowIndex: number; error: string }) => `行${e.rowIndex}: ${e.error}`)
+          .map((er) => `行${er.rowIndex}: ${er.error}`)
           .join("\n")
         setError(
           `一部エラー:\n${es}${
-            j.errors.length > 5 ? `\n...他 ${j.errors.length - 5} 件` : ""
+            data.errors.length > 5 ? `\n...他 ${data.errors.length - 5} 件` : ""
           }`
         )
       }

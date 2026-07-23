@@ -75,34 +75,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
 
-  let file: File | null = null
-  try {
-    const formData = await request.formData()
-    const f = formData.get("file")
-    if (f instanceof File) file = f
-  } catch {
-    return NextResponse.json(
-      { error: "multipart/form-data with 'file' is required" },
-      { status: 400 }
-    )
-  }
-  if (!file) {
-    return NextResponse.json({ error: "file is required" }, { status: 400 })
-  }
+  // 入力は 2 通り:
+  //  (A) application/json  { rows: [...] }  … クライアントで xlsx を解析済み（推奨・軽量）
+  //  (B) multipart/form-data file=<xlsx>   … 後方互換（ファイルが4.5MB超だと失敗する）
+  let rows: Record<string, unknown>[] = []
+  const contentType = request.headers.get("content-type") ?? ""
 
   try {
-    const arrayBuf = await file.arrayBuffer()
-    const workbook = XLSX.read(arrayBuf, { type: "array" })
-    const sheetName = workbook.SheetNames[0]
-    if (!sheetName) {
-      return NextResponse.json({ error: "No sheet found" }, { status: 400 })
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as { rows?: Record<string, unknown>[] }
+      if (!Array.isArray(body.rows)) {
+        return NextResponse.json({ error: "rows 配列が必要です" }, { status: 400 })
+      }
+      rows = body.rows
+    } else {
+      const formData = await request.formData()
+      const f = formData.get("file")
+      if (!(f instanceof File)) {
+        return NextResponse.json({ error: "file is required" }, { status: 400 })
+      }
+      const arrayBuf = await f.arrayBuffer()
+      const workbook = XLSX.read(arrayBuf, { type: "array" })
+      const sheetName = workbook.SheetNames[0]
+      if (!sheetName) {
+        return NextResponse.json({ error: "No sheet found" }, { status: 400 })
+      }
+      const sheet = workbook.Sheets[sheetName]
+      rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+        raw: false,
+        defval: null,
+      })
     }
-    const sheet = workbook.Sheets[sheetName]
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      raw: false,
-      defval: null,
-    })
+  } catch {
+    return NextResponse.json({ error: "ファイルの読み取りに失敗しました" }, { status: 400 })
+  }
 
+  try {
     // 店舗名→locationName の逆引きも許容
     const allStores = await db
       .select({ locationName: stores.locationName, title: stores.title })
