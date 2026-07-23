@@ -139,6 +139,55 @@ export default function PostsPage() {
   // 画像アーカイブ（アップロード済み画像の閲覧・追加・削除）
   const [imageManagerOpen, setImageManagerOpen] = useState(false)
 
+  // スプレッドシート直接取り込み
+  const [sheetModalOpen, setSheetModalOpen] = useState(false)
+  const [sheetUrl, setSheetUrl] = useState("")
+
+  const handleSheetImport = async () => {
+    if (!sheetUrl.trim()) {
+      setError("スプレッドシートのURLを入力してください")
+      return
+    }
+    setImporting(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const { ok, data, error } = await fetchJson<{
+        inserted: number
+        totalRows: number
+        sheetTitle?: string
+        errors?: { rowIndex: number; error: string }[]
+      }>("/api/scheduled-posts/import-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: sheetUrl.trim() }),
+      })
+      if (!ok || !data) throw new Error(error ?? "取り込みに失敗しました")
+      setSheetModalOpen(false)
+      setSuccess(
+        `取り込み完了${data.sheetTitle ? `（${data.sheetTitle}）` : ""}: 登録 ${data.inserted} / ${data.totalRows} 件${
+          data.errors?.length ? ` / エラー ${data.errors.length} 件` : ""
+        }`
+      )
+      if (data.errors && data.errors.length > 0) {
+        const es = data.errors
+          .slice(0, 5)
+          .map((er) => `行${er.rowIndex}: ${er.error}`)
+          .join("\n")
+        setError(
+          `一部エラー:\n${es}${
+            data.errors.length > 5 ? `\n...他 ${data.errors.length - 5} 件` : ""
+          }`
+        )
+      }
+      await loadScheduled()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const loadPublished = useCallback(async () => {
     if (!locationName) {
       setPublished([])
@@ -460,11 +509,20 @@ export default function PostsPage() {
                 <button
                   onClick={() => {
                     setImportDropdownOpen(false)
+                    setSheetModalOpen(true)
+                  }}
+                  className="w-full text-left text-sm px-4 py-2 hover:bg-gray-50 font-medium text-[#4a90e2]"
+                >
+                  スプレッドシートから取り込む
+                </button>
+                <button
+                  onClick={() => {
+                    setImportDropdownOpen(false)
                     fileInputRef.current?.click()
                   }}
                   className="w-full text-left text-sm px-4 py-2 hover:bg-gray-50"
                 >
-                  通常インポート
+                  Excelファイルから取り込む
                 </button>
                 <button
                   onClick={() => {
@@ -774,6 +832,64 @@ export default function PostsPage() {
         locationName={locationName}
         mode="manage"
       />
+
+      {/* スプレッドシート直接取り込み */}
+      {sheetModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold">スプレッドシートから取り込む</h2>
+              <button
+                onClick={() => setSheetModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 mb-3 leading-relaxed">
+              Googleスプレッドシートの共有リンクを貼り付けてください。ダウンロード不要で直接読み込みます。
+              <br />
+              ※ログイン中のGoogleアカウント（meo-support@li-go.jp）がそのシートを開ける必要があります。
+              取り込むシートを指定する場合は、そのシートを開いた状態のURL（末尾に <code className="bg-gray-100 px-1 rounded">#gid=…</code> が付く）を貼り付けてください。
+            </p>
+            <label className="block text-sm font-bold mb-1">スプレッドシートURL</label>
+            <input
+              type="url"
+              value={sheetUrl}
+              onChange={(e) => setSheetUrl(e.target.value)}
+              placeholder="https://docs.google.com/spreadsheets/d/xxxxx/edit#gid=0"
+              className="w-full h-10 px-3 text-sm border rounded mb-2"
+              autoFocus
+            />
+            <div className="bg-blue-50 border border-blue-100 rounded p-3 text-xs text-blue-900 mb-4 leading-relaxed">
+              1行目を見出しにしてください。認識できる列名の例：<br />
+              <b>店舗名</b>（または<b>店舗ID</b>）／<b>予約日時</b>（例 2026-07-15 10:00）／<b>本文</b>／投稿タイプ／画像URL／CTA種別／CTAリンク
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setSheetModalOpen(false)}
+                disabled={importing}
+                className="h-10 px-6 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleSheetImport}
+                disabled={importing || !sheetUrl.trim()}
+                className="h-10 px-6 text-sm text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {importing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> 取り込み中…
+                  </>
+                ) : (
+                  "取り込む"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -56,6 +56,8 @@ export const authOptions: NextAuthOptions = {
             "email",
             "profile",
             "https://www.googleapis.com/auth/business.manage",
+            // 投稿一括取り込み用: スプレッドシートの読み取り（読み取り専用）
+            "https://www.googleapis.com/auth/spreadsheets.readonly",
           ].join(" "),
           access_type: "offline",
           prompt: "consent",
