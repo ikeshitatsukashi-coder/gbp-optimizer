@@ -16,6 +16,8 @@ const PUBLIC_PATHS = [
   "/s/",
   "/share/",
   "/api/public/",
+  // 予約投稿の定期実行（ルート内で CRON_SECRET 認証）
+  "/api/cron/execute-scheduled",
 ]
 
 function isPublicPath(pathname: string): boolean {
