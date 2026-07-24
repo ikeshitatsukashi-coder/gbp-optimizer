@@ -148,18 +148,23 @@ export default function PostsPage() {
     sampleRows: Record<string, unknown>[]
     rowCount: number
     sheetTitle?: string
+    warning?: string
   } | null>(null)
   const [sheetMapping, setSheetMapping] = useState<Record<string, string>>({})
+  const [sheetTabs, setSheetTabs] = useState<{ gid: string; title: string }[]>([])
+  const [sheetGid, setSheetGid] = useState<string>("")
 
   const openSheetModal = () => {
     setSheetStep("url")
     setSheetPreview(null)
     setSheetMapping({})
+    setSheetTabs([])
+    setSheetGid("")
     setSheetModalOpen(true)
   }
 
-  // ステップ1: プレビュー取得（見出し・推定マッピング）
-  const handleSheetPreview = async () => {
+  // ステップ1: プレビュー取得（タブ一覧・見出し・推定マッピング）
+  const handleSheetPreview = async (gid?: string) => {
     if (!sheetUrl.trim()) {
       setError("スプレッドシートのURLを入力してください")
       return
@@ -172,11 +177,18 @@ export default function PostsPage() {
         sampleRows: Record<string, unknown>[]
         rowCount: number
         sheetTitle?: string
+        selectedGid?: string
+        tabs?: { gid: string; title: string }[]
         suggestedMapping: Record<string, string>
+        warning?: string
       }>("/api/scheduled-posts/import-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: sheetUrl.trim(), preview: true }),
+        body: JSON.stringify({
+          url: sheetUrl.trim(),
+          preview: true,
+          ...(gid ? { gid } : {}),
+        }),
       })
       if (!ok || !data) throw new Error(error ?? "シートを読み取れませんでした")
       setSheetPreview({
@@ -184,7 +196,10 @@ export default function PostsPage() {
         sampleRows: data.sampleRows,
         rowCount: data.rowCount,
         sheetTitle: data.sheetTitle,
+        warning: data.warning,
       })
+      setSheetTabs(data.tabs ?? [])
+      setSheetGid(data.selectedGid ?? "")
       setSheetMapping(data.suggestedMapping ?? {})
       setSheetStep("map")
     } catch (e) {
@@ -221,7 +236,11 @@ export default function PostsPage() {
       }>("/api/scheduled-posts/import-sheet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: sheetUrl.trim(), mapping: sheetMapping }),
+        body: JSON.stringify({
+          url: sheetUrl.trim(),
+          mapping: sheetMapping,
+          ...(sheetGid ? { gid: sheetGid } : {}),
+        }),
       })
       if (!ok || !data) throw new Error(error ?? "取り込みに失敗しました")
       setSheetModalOpen(false)
@@ -938,7 +957,7 @@ export default function PostsPage() {
                     キャンセル
                   </button>
                   <button
-                    onClick={handleSheetPreview}
+                    onClick={() => handleSheetPreview()}
                     disabled={importing || !sheetUrl.trim()}
                     className="h-10 px-6 text-sm text-white bg-[#4a90e2] hover:bg-[#3a7cc8] rounded disabled:opacity-50 flex items-center gap-1.5"
                   >
@@ -954,8 +973,40 @@ export default function PostsPage() {
               </>
             ) : (
               <>
+                {/* タブ（ページ）選択 */}
+                {sheetTabs.length > 1 && (
+                  <div className="flex items-center gap-3 mb-3 bg-gray-50 border rounded p-3">
+                    <label className="text-sm font-bold shrink-0">
+                      取り込むページ（タブ）
+                    </label>
+                    <select
+                      value={sheetGid}
+                      onChange={(e) => handleSheetPreview(e.target.value)}
+                      disabled={importing}
+                      className="h-9 px-2 text-sm border rounded flex-1 min-w-0"
+                    >
+                      {sheetTabs.map((t) => (
+                        <option key={t.gid} value={t.gid}>
+                          {t.title}
+                        </option>
+                      ))}
+                    </select>
+                    {importing && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+                  </div>
+                )}
+                {sheetTabs.length > 1 && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2.5 mb-3">
+                    ⚠️ 取り込まれるのは<b>選択中のこのタブ1枚だけ</b>です（他のタブ・他の会社分は取り込まれません）。
+                    また、登録されるのは「予約」までで、この操作でGoogleに投稿されることはありません。
+                  </p>
+                )}
+                {sheetPreview?.warning && (
+                  <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2.5 mb-3">
+                    {sheetPreview.warning}
+                  </p>
+                )}
                 <p className="text-xs text-gray-600 mb-3 leading-relaxed">
-                  シート「{sheetPreview?.sheetTitle}」（データ {sheetPreview?.rowCount} 行）を読み取りました。
+                  タブ「{sheetPreview?.sheetTitle}」（データ {sheetPreview?.rowCount} 行）を読み取りました。
                   下で、あなたのシートの<b>どの列</b>が各項目に当たるかを選んでください。
                   <b className="text-red-600">＊</b> は必須です。
                 </p>

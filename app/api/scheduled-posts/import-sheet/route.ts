@@ -23,6 +23,50 @@ function parseSheetUrl(url: string): { id: string | null; gid: string | null } {
   return { id: idMatch?.[1] ?? null, gid: gidMatch?.[1] ?? null }
 }
 
+/** Sheets API のエラーを原因別に分類して分かりやすいメッセージにする */
+function classifySheetsError(
+  status: number,
+  bodyText: string
+): { status: number; message: string } {
+  let gErr: { status?: string; message?: string } = {}
+  try {
+    gErr = (JSON.parse(bodyText) as { error?: typeof gErr }).error ?? {}
+  } catch {
+    /* not JSON */
+  }
+  const msg = gErr.message ?? bodyText
+  const lower = msg.toLowerCase()
+
+  // ① Google Sheets API 自体が未有効化
+  if (lower.includes("has not been used") || lower.includes("is disabled") || lower.includes("api has not been")) {
+    return {
+      status: 503,
+      message:
+        "Googleスプレッドシートの読み取り機能（Sheets API）が、まだこのシステムで有効化されていません。管理者に「Google Sheets API を有効化してほしい」とお伝えください（GCPプロジェクト gbp-optimizer-493203）。有効化はこちら → https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=729277459238",
+    }
+  }
+  // ② トークンにスコープが無い（再ログイン未実施）
+  if (lower.includes("insufficient authentication scopes") || lower.includes("scope")) {
+    return {
+      status: 403,
+      message:
+        "スプレッドシート読み取りの権限がまだ付与されていません。一度「ログアウト」してから再度ログインし、表示される「スプレッドシートの表示」の許可を承認してください。",
+    }
+  }
+  // ③ そのシートを開く権限がない
+  if (status === 404) {
+    return {
+      status: 404,
+      message:
+        "スプレッドシートが見つかりません。URLが正しいか、共有リンク（.../spreadsheets/d/xxxx/edit）になっているか確認してください。",
+    }
+  }
+  return {
+    status: 403,
+    message: `このスプレッドシートを開けません。ログイン中のアカウント（meo-support@li-go.jp）がこのシートにアクセスできるか、共有設定をご確認ください。（詳細: ${msg.slice(0, 150)}）`,
+  }
+}
+
 export async function POST(request: Request) {
   const accessToken = await getAccessToken()
   if (!accessToken) {
@@ -56,26 +100,15 @@ export async function POST(request: Request) {
   const targetGid = body.gid ?? gid
 
   try {
-    // 1) 対象シート名を特定（gid 指定があればそのシート、なければ先頭シート）
+    // 1) 全タブ一覧を取得
     const metaRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties(sheetId,title)`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     )
     if (!metaRes.ok) {
       const txt = await metaRes.text()
-      if (metaRes.status === 403 || metaRes.status === 401) {
-        return NextResponse.json(
-          {
-            error:
-              "スプレッドシートにアクセスできません。ログイン中のGoogleアカウント（meo-support@li-go.jp）がこのシートを開けるか、共有設定をご確認ください。権限を追加した直後は一度ログインし直してください。",
-          },
-          { status: 403 }
-        )
-      }
-      return NextResponse.json(
-        { error: `シート情報の取得に失敗しました: ${metaRes.status} ${txt.slice(0, 200)}` },
-        { status: metaRes.status }
-      )
+      const classified = classifySheetsError(metaRes.status, txt)
+      return NextResponse.json({ error: classified.message }, { status: classified.status })
     }
     const meta = (await metaRes.json()) as {
       sheets?: { properties?: { sheetId?: number; title?: string } }[]
@@ -84,6 +117,13 @@ export async function POST(request: Request) {
     if (sheets.length === 0) {
       return NextResponse.json({ error: "シートが見つかりません" }, { status: 400 })
     }
+    // タブ一覧（UIのタブ選択用）
+    const tabs = sheets.map((s) => ({
+      gid: String(s.properties?.sheetId ?? ""),
+      title: s.properties?.title ?? "",
+    }))
+
+    // 対象タブ: gid 指定があればそれ、なければ先頭タブ
     let sheetTitle = sheets[0].properties?.title ?? "Sheet1"
     if (targetGid) {
       const hit = sheets.find(
@@ -100,16 +140,28 @@ export async function POST(request: Request) {
     )
     if (!valRes.ok) {
       const txt = await valRes.text()
-      return NextResponse.json(
-        { error: `シートの読み取りに失敗しました: ${valRes.status} ${txt.slice(0, 200)}` },
-        { status: valRes.status }
-      )
+      const classified = classifySheetsError(valRes.status, txt)
+      return NextResponse.json({ error: classified.message }, { status: classified.status })
     }
     const valJson = (await valRes.json()) as { values?: string[][] }
     const values = valJson.values ?? []
     if (values.length < 2) {
+      // プレビュー時はタブ一覧を返して、別タブを選び直せるようにする
+      if (body.preview) {
+        return NextResponse.json({
+          preview: true,
+          sheetTitle,
+          selectedGid: targetGid ?? tabs[0]?.gid,
+          tabs,
+          headers: [],
+          rowCount: 0,
+          sampleRows: [],
+          suggestedMapping: {},
+          warning: `このタブ「${sheetTitle}」にはデータ行がありません（1行目=見出し、2行目以降にデータが必要）。別のタブを選んでください。`,
+        })
+      }
       return NextResponse.json(
-        { error: "データ行がありません（1行目は見出し、2行目以降にデータが必要です）" },
+        { error: `タブ「${sheetTitle}」にデータ行がありません（1行目は見出し、2行目以降にデータが必要です）` },
         { status: 400 }
       )
     }
@@ -124,11 +176,13 @@ export async function POST(request: Request) {
       return obj
     })
 
-    // 4a) プレビュー: 取り込まず、見出し・サンプル・推定マッピングを返す（列対応づけUI用）
+    // 4a) プレビュー: 取り込まず、タブ一覧・見出し・サンプル・推定マッピングを返す
     if (body.preview) {
       return NextResponse.json({
         preview: true,
         sheetTitle,
+        selectedGid: targetGid ?? tabs.find((t) => t.title === sheetTitle)?.gid ?? tabs[0]?.gid,
+        tabs,
         headers: header.filter(Boolean),
         rowCount: rows.length,
         sampleRows: rows.slice(0, 3),
