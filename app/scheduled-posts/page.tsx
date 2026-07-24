@@ -94,6 +94,45 @@ export default function ScheduledPostsPage() {
   const [formCtaUrl, setFormCtaUrl] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
+  // 自動実行の設定状態
+  const [autoStatus, setAutoStatus] = useState<{
+    configured: boolean
+    savedBy?: string
+    savedAt?: string
+  } | null>(null)
+  const [autoSaving, setAutoSaving] = useState(false)
+
+  const loadAutoStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/cron/setup")
+      if (res.ok) setAutoStatus(await res.json())
+    } catch {
+      /* noop */
+    }
+  }, [])
+
+  const enableAuto = async () => {
+    if (
+      !confirm(
+        "自動実行を有効化しますか？\n\n現在ログイン中のGoogleアカウントの権限で、期日が来た予約投稿を15分おきに自動投稿するようになります。\n※投稿権限のあるアカウント（meo-support@li-go.jp）でログインした状態で押してください。"
+      )
+    )
+      return
+    setAutoSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/cron/setup", { method: "POST" })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setSuccess("自動実行を有効化しました。期日が来た予約は15分おきに自動投稿されます。")
+      await loadAutoStatus()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAutoSaving(false)
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -114,6 +153,10 @@ export default function ScheduledPostsPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    loadAutoStatus()
+  }, [loadAutoStatus])
 
   const openModal = () => {
     setFormStore(locationName ?? "")
@@ -231,6 +274,52 @@ export default function ScheduledPostsPage() {
           </Button>
         </div>
       </div>
+
+      {/* 自動実行の状態 */}
+      {autoStatus && (
+        <Card
+          className={`p-4 flex items-start justify-between gap-3 flex-wrap ${
+            autoStatus.configured
+              ? "bg-green-50 border-green-200"
+              : "bg-amber-50 border-amber-300"
+          }`}
+        >
+          <div className="text-sm">
+            {autoStatus.configured ? (
+              <>
+                <p className="font-bold text-green-900">
+                  自動実行: 有効（15分おきに期日到来分を自動投稿）
+                </p>
+                <p className="text-xs text-green-800 mt-0.5">
+                  権限: {autoStatus.savedBy}
+                  {autoStatus.savedAt &&
+                    ` ／ 設定日: ${new Date(autoStatus.savedAt).toLocaleDateString("ja-JP")}`}
+                  　※投稿が失敗するようになった場合は、meo-supportでログインして再度有効化してください
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-bold text-amber-900">
+                  自動実行: 未設定（予約は自動では投稿されません）
+                </p>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  meo-support@li-go.jp
+                  でログインした状態で右のボタンを押すと、以後は期日が来た予約が15分おきに自動投稿されます。
+                </p>
+              </>
+            )}
+          </div>
+          <Button onClick={enableAuto} disabled={autoSaving} size="sm" variant="outline">
+            {autoSaving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : autoStatus.configured ? (
+              "権限を更新（再有効化）"
+            ) : (
+              "自動実行を有効化"
+            )}
+          </Button>
+        </Card>
+      )}
 
       {error && (
         <Card className="p-4 bg-red-50 border-red-200 flex items-start gap-2">
@@ -480,7 +569,7 @@ export default function ScheduledPostsPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        ※ 自動実行は 15 分おきの cron で動作します。Cron 経由で投稿するには `CRON_OAUTH_TOKEN` の設定が必要です。手動でも「期日到来分を今すぐ実行」ボタンで即時実行できます。
+        ※ 自動実行が有効なら、期日が来た予約は約15分以内に自動投稿されます（1回の実行で最大20件、残りは次回に処理）。急ぎの場合は「期日到来分を今すぐ実行」で即時実行できます。
       </p>
     </div>
   )

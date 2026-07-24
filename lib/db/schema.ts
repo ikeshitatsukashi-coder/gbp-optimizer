@@ -323,6 +323,17 @@ export const apiKeys = pgTable(
 
 export type ApiKey = typeof apiKeys.$inferSelect
 
+/**
+ * アプリ全体の設定（key-value）
+ * 例: gbp_refresh_token … 予約投稿の自動実行に使う Google リフレッシュトークン
+ */
+export const appSettings = pgTable("app_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedBy: text("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
 /* -------------------------------------------------------------------------- */
 /*                       アンケート（クチコミ促進）                              */
 /* -------------------------------------------------------------------------- */

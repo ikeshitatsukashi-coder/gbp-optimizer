@@ -66,6 +66,13 @@ function SurveyForm() {
     if (fixedStore) setStoreId(fixedStore)
   }, [fixedStore])
 
+  // 対象店舗が1つだけのアンケートは自動選択（回答者に店舗選択を見せない）
+  useEffect(() => {
+    if (!fixedStore && survey && survey.stores.length === 1) {
+      setStoreId(survey.stores[0].id)
+    }
+  }, [survey, fixedStore])
+
   const toggleAnswer = (qTitle: string, choice: string, type: "single" | "multiple") => {
     setAnswers((prev) => {
       const next = new Map(prev)
@@ -275,10 +282,11 @@ function SurveyForm() {
   }
 
   /* -------------------------------- 回答フォーム -------------------------------- */
-  const showStoreSelector = !fixedStore
-  const fixedStoreTitle = fixedStore
-    ? survey.stores.find((s) => s.id === fixedStore)?.title
-    : null
+  // 店舗が確定している場合（URL指定 or 対象店舗が1つ）は選択欄を出さない
+  const showStoreSelector = !fixedStore && survey.stores.length > 1
+  const fixedStoreTitle =
+    (fixedStore ? survey.stores.find((s) => s.id === fixedStore)?.title : null) ??
+    (survey.stores.length === 1 ? survey.stores[0].title : null)
 
   return (
     <Shell>

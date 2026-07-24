@@ -4,27 +4,29 @@ import { scheduledPosts, stores } from "@/lib/db/schema"
 import { createGmbClient } from "@/lib/gbp-client"
 import { and, eq, lte, sql } from "drizzle-orm"
 import { getAccessToken } from "@/lib/get-session"
+import { getServiceAccessToken } from "@/lib/services/cron-auth"
+
+/** 投稿実行に時間がかかるため延長（1回最大20件） */
+export const maxDuration = 60
 
 /**
  * GET /api/cron/execute-scheduled
  *
- * Vercel Cron が呼び出すエンドポイント。
- * 認証: Authorization: Bearer ${CRON_SECRET} or Vercel が自動付与する x-vercel-cron ヘッダー。
+ * 定期実行（GitHub Actions 等）が呼び出すエンドポイント。
+ * 認証: Authorization: Bearer ${CRON_SECRET} / ?secret=${CRON_SECRET} / x-vercel-cron ヘッダー。
  *
- * scheduled_posts から status='pending' かつ scheduled_for <= now() を取得して、
+ * scheduled_posts から status='pending' かつ scheduled_for <= now() を取得して
  * v4 API へ投稿し、結果を DB に記録する。
- *
- * 注意: OAuth ユーザーアクセストークンを使うので、各店舗のオーナー権限を持つ
- * ユーザーが過去に認可済みである必要がある。
- * 現状は store_owner_tokens 等のサービストークン管理は無いため、Authorization
- * ヘッダーで渡されたトークンを使う。Cron では設定不可なので、最初の MVP は
- * 「人がポチる」スタイル（このエンドポイントへ POST で発火）も併設する。
+ * アクセストークンは「自動実行を有効化」で保存されたリフレッシュトークンから都度発行。
  */
 
 function isAuthorized(request: Request): boolean {
-  const auth = request.headers.get("authorization")
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && auth === `Bearer ${cronSecret}`) return true
+  if (!cronSecret) return false
+  const auth = request.headers.get("authorization")
+  if (auth === `Bearer ${cronSecret}`) return true
+  const url = new URL(request.url)
+  if (url.searchParams.get("secret") === cronSecret) return true
   // Vercel Cron は内部的に "x-vercel-cron" ヘッダーを付ける
   if (request.headers.get("x-vercel-cron")) return true
   return false
@@ -67,45 +69,31 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // accessToken はクロン経由では入手できない（OAuth ユーザートークンが要る）。
-  // ベスト方策: 専用のサービスアカウント or 「事前に保存したリフレッシュトークン」を使うが
-  // 今の MVP では未実装。Cron での自動実行を機能させるには CRON_OAUTH_TOKEN を設定する。
-  const cronToken = process.env.CRON_OAUTH_TOKEN
-  if (!cronToken) {
-    return NextResponse.json(
-      {
-        ok: true,
-        skipped: true,
-        reason:
-          "CRON_OAUTH_TOKEN not configured. Skipping automatic execution. Use the UI Run button instead, or set CRON_OAUTH_TOKEN to a long-lived access token.",
-      },
-      { status: 200 }
-    )
+  // 保存済みリフレッシュトークンからアクセストークンを発行
+  const svc = await getServiceAccessToken()
+  if (!svc.accessToken) {
+    return NextResponse.json({ ok: true, skipped: true, reason: svc.reason }, { status: 200 })
   }
 
-  return runExecution(cronToken)
+  return runExecution(svc.accessToken)
 }
 
 /**
  * POST /api/cron/execute-scheduled
  * 認証済みユーザーが UI から「今すぐ実行」ボタンを押すと、自分のアクセストークンで
- * 実行できる。Cron 経由ではなく手動トリガー用。
+ * 実行できる。セッションがなければ保存済みトークンにフォールバック（CRON_SECRET必須）。
  */
 export async function POST(request: Request) {
   const accessToken = await getAccessToken()
   if (!accessToken) {
-    // Cron 経由でも POST 可: Bearer 認証ヘッダーをチェック
     if (!isAuthorized(request)) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
-    const tk = process.env.CRON_OAUTH_TOKEN
-    if (!tk) {
-      return NextResponse.json(
-        { error: "CRON_OAUTH_TOKEN not configured" },
-        { status: 500 }
-      )
+    const svc = await getServiceAccessToken()
+    if (!svc.accessToken) {
+      return NextResponse.json({ error: svc.reason }, { status: 500 })
     }
-    return runExecution(tk)
+    return runExecution(svc.accessToken)
   }
   return runExecution(accessToken)
 }
@@ -131,7 +119,7 @@ async function runExecution(accessToken: string) {
         lte(scheduledPosts.scheduledFor, now)
       )
     )
-    .limit(50)
+    .limit(20) // 60秒制限内に収める（残りは次回実行で処理）
 
   const results: Array<{
     id: number

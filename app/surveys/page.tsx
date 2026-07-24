@@ -41,7 +41,28 @@ export default function SurveysPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<number | null>(null)
-  const [qrModal, setQrModal] = useState<{ name: string; url: string; dataUrl: string } | null>(null)
+  const [qrModal, setQrModal] = useState<{
+    token: string
+    name: string
+    url: string
+    dataUrl: string
+    storeId: string
+  } | null>(null)
+  const [stores, setStores] = useState<{ id: string; title: string }[]>([])
+
+  useEffect(() => {
+    fetch("/api/stores?status=active&limit=2000")
+      .then((r) => r.json())
+      .then((j) =>
+        setStores(
+          (j.stores ?? []).map((s: { locationName: string; title: string }) => ({
+            id: s.locationName.replace(/^locations\//, ""),
+            title: s.title,
+          }))
+        )
+      )
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,10 +91,12 @@ export default function SurveysPage() {
     setTimeout(() => setCopiedId(null), 1500)
   }
 
-  const showQr = async (row: SurveyRow) => {
-    const url = surveyUrl(row.token)
+  const showQr = async (row: SurveyRow, storeId = "") => {
+    const url = storeId
+      ? `${surveyUrl(row.token)}?store=${storeId}`
+      : surveyUrl(row.token)
     const dataUrl = await QRCode.toDataURL(url, { width: 480, margin: 2 })
-    setQrModal({ name: row.name, url, dataUrl })
+    setQrModal({ token: row.token, name: row.name, url, dataUrl, storeId })
   }
 
   const duplicate = async (row: SurveyRow) => {
@@ -298,6 +321,22 @@ export default function SurveysPage() {
               <X className="h-4 w-4" />
             </button>
             <h2 className="font-bold mb-3 text-sm">{qrModal.name}</h2>
+            {/* 店舗固定QR: 選ぶと ?store= 付きURLになり回答画面の店舗選択が消える */}
+            <select
+              value={qrModal.storeId}
+              onChange={(e) => {
+                const row = rows.find((r) => r.token === qrModal.token)
+                if (row) showQr(row, e.target.value)
+              }}
+              className="w-full h-9 px-2 text-xs border rounded mb-3"
+            >
+              <option value="">全店舗共通QR（回答画面で店舗を選択）</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  店舗固定: {s.title}
+                </option>
+              ))}
+            </select>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qrModal.dataUrl} alt="QRコード" className="mx-auto w-56 h-56" />
             <p className="text-xs text-gray-500 mt-2 break-all">{qrModal.url}</p>

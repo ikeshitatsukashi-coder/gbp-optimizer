@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Star, MessageSquare, Search, Loader2, FileText, ChevronDown } from "lucide-react"
 import { useGbpData } from "@/lib/use-gbp-data"
 import { useGbp } from "@/lib/store"
-import { reviewsList as mockReviews, storeName } from "@/lib/mock-data"
+import { reviewsList as mockReviews, storeName as mockStoreName } from "@/lib/mock-data"
 import { getTemplatesForRating, applyTemplate } from "@/lib/reply-templates"
 
 interface Review {
@@ -59,7 +59,11 @@ export default function ReviewsPage() {
   const [replyTexts, setReplyTexts] = useState<Record<string, string>>({})
   const [replying, setReplying] = useState<string | null>(null)
   const [openTemplateMenu, setOpenTemplateMenu] = useState<string | null>(null)
-  const { locationName } = useGbp()
+  const { locationName, locations } = useGbp()
+
+  // テンプレートの署名に使う店舗名は「選択中の実店舗名」（モックはデモ表示時のみ）
+  const storeName =
+    locations.find((l) => l.name === locationName)?.title ?? mockStoreName
 
   const { data: apiReviews, loading, refetch } = useGbpData("reviews", null)
   const transformed = transformApiReviews(apiReviews)
