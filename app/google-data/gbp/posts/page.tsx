@@ -211,13 +211,19 @@ export default function PostsPage() {
 
   // ステップ2: マッピングを適用して本取り込み
   const handleSheetImport = async () => {
-    // 必須チェック: (店舗名 or 店舗ID) / 予約日時 / 本文
+    // 必須チェック: (店舗名 or 店舗ID) / 日時系のいずれか / 本文
     if (!sheetMapping.storeName && !sheetMapping.locationName) {
       setError("「店舗名」または「店舗ID」の列を選択してください")
       return
     }
-    if (!sheetMapping.scheduledFor) {
-      setError("「予約日時」の列を選択してください")
+    if (
+      !sheetMapping.scheduledFor &&
+      !sheetMapping.scheduledDate &&
+      !sheetMapping.immediateFlag
+    ) {
+      setError(
+        "日時の列を選択してください（「予約日時（1列）」または「予約投稿日」。即時投稿○列だけでも可）"
+      )
       return
     }
     if (!sheetMapping.summary) {
@@ -1014,13 +1020,19 @@ export default function PostsPage() {
                   {(
                     [
                       { key: "storeName", label: "店舗名", req: true, note: "または店舗ID" },
-                      { key: "locationName", label: "店舗ID", req: false, note: "locations/… または数字。店舗名を選んだ場合は不要" },
-                      { key: "scheduledFor", label: "予約日時", req: true, note: "例 2026-07-15 10:00 / 2026年7月15日" },
+                      { key: "locationName", label: "店舗ID", req: false, note: "Google のID。GMOの店舗IDは不一致のため店舗名を推奨" },
+                      { key: "scheduledFor", label: "予約日時（1列）", req: false, note: "日時が1列の場合。例 2026-07-15 10:00" },
+                      { key: "scheduledDate", label: "予約投稿日", req: false, note: "日付と時間が別列の場合（GMO形式）" },
+                      { key: "scheduledTime", label: "予約投稿時間", req: false, note: "例 9:00" },
+                      { key: "immediateFlag", label: "即時投稿（○列）", req: false, note: "○の行は「今すぐ」の予約として登録" },
+                      { key: "draftFlag", label: "下書き保存（○列）", req: false, note: "○の行は下書きとして登録" },
                       { key: "summary", label: "本文", req: true, note: "" },
-                      { key: "postType", label: "投稿タイプ", req: false, note: "STANDARD/EVENT/OFFER/ALERT。空ならSTANDARD" },
-                      { key: "mediaUrl", label: "画像URL", req: false, note: "" },
-                      { key: "ctaType", label: "CTA種別", req: false, note: "BOOK/ORDER/SHOP/LEARN_MORE/SIGN_UP/CALL" },
-                      { key: "ctaUrl", label: "CTAリンク", req: false, note: "" },
+                      { key: "summary2", label: "本文2", req: false, note: "本文の後ろに連結" },
+                      { key: "hashtags", label: "ハッシュタグ", req: false, note: "本文末尾に追加" },
+                      { key: "postType", label: "投稿タイプ", req: false, note: "「最新情報」等の日本語もOK。空ならSTANDARD" },
+                      { key: "mediaUrl", label: "画像", req: false, note: "URL または画像アーカイブのファイル名" },
+                      { key: "ctaType", label: "ボタン種別", req: false, note: "「詳細」等の日本語もOK" },
+                      { key: "ctaUrl", label: "ボタンURL", req: false, note: "" },
                     ] as const
                   ).map((field) => (
                     <div key={field.key} className="flex items-center gap-3">

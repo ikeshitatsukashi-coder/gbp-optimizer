@@ -6,6 +6,37 @@ import {
   suggestMapping,
   type ColumnMapping,
 } from "@/lib/services/import-scheduled-rows"
+import * as XLSX from "xlsx"
+
+/**
+ * フォールバック: シートが「リンクを知っている全員が閲覧可」の場合、
+ * Sheets API を使わず公開CSVエクスポートで読み取る（API未有効化でも動く）。
+ */
+async function fetchViaPublicCsv(
+  id: string,
+  gid: string | null
+): Promise<string[][] | null> {
+  try {
+    const res = await fetch(
+      `https://docs.google.com/spreadsheets/d/${id}/export?format=csv${gid ? `&gid=${gid}` : ""}`,
+      { redirect: "follow" }
+    )
+    if (!res.ok) return null
+    const ct = res.headers.get("content-type") ?? ""
+    if (!ct.includes("csv") && !ct.includes("text/plain")) return null
+    const text = await res.text()
+    if (!text.trim()) return null
+    const wb = XLSX.read(text, { type: "string" })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    return XLSX.utils.sheet_to_json<string[]>(ws, {
+      header: 1,
+      raw: false,
+      defval: null,
+    }) as unknown as string[][]
+  } catch {
+    return null
+  }
+}
 
 /**
  * POST /api/scheduled-posts/import-sheet
@@ -100,51 +131,65 @@ export async function POST(request: Request) {
   const targetGid = body.gid ?? gid
 
   try {
-    // 1) 全タブ一覧を取得
+    let values: string[][] = []
+    let tabs: { gid: string; title: string }[] = []
+    let sheetTitle = ""
+    let viaPublicCsv = false
+
+    // 1) Sheets API で全タブ一覧を取得
     const metaRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties(sheetId,title)`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     )
-    if (!metaRes.ok) {
-      const txt = await metaRes.text()
-      const classified = classifySheetsError(metaRes.status, txt)
-      return NextResponse.json({ error: classified.message }, { status: classified.status })
-    }
-    const meta = (await metaRes.json()) as {
-      sheets?: { properties?: { sheetId?: number; title?: string } }[]
-    }
-    const sheets = meta.sheets ?? []
-    if (sheets.length === 0) {
-      return NextResponse.json({ error: "シートが見つかりません" }, { status: 400 })
-    }
-    // タブ一覧（UIのタブ選択用）
-    const tabs = sheets.map((s) => ({
-      gid: String(s.properties?.sheetId ?? ""),
-      title: s.properties?.title ?? "",
-    }))
 
-    // 対象タブ: gid 指定があればそれ、なければ先頭タブ
-    let sheetTitle = sheets[0].properties?.title ?? "Sheet1"
-    if (targetGid) {
-      const hit = sheets.find(
-        (s) => String(s.properties?.sheetId ?? "") === String(targetGid)
+    if (metaRes.ok) {
+      const meta = (await metaRes.json()) as {
+        sheets?: { properties?: { sheetId?: number; title?: string } }[]
+      }
+      const sheets = meta.sheets ?? []
+      if (sheets.length === 0) {
+        return NextResponse.json({ error: "シートが見つかりません" }, { status: 400 })
+      }
+      tabs = sheets.map((s) => ({
+        gid: String(s.properties?.sheetId ?? ""),
+        title: s.properties?.title ?? "",
+      }))
+
+      // 対象タブ: gid 指定があればそれ、なければ先頭タブ
+      sheetTitle = sheets[0].properties?.title ?? "Sheet1"
+      if (targetGid) {
+        const hit = sheets.find(
+          (s) => String(s.properties?.sheetId ?? "") === String(targetGid)
+        )
+        if (hit?.properties?.title) sheetTitle = hit.properties.title
+      }
+
+      // 2) 値を取得
+      const range = encodeURIComponent(sheetTitle)
+      const valRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${range}?valueRenderOption=FORMATTED_VALUE`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
       )
-      if (hit?.properties?.title) sheetTitle = hit.properties.title
+      if (!valRes.ok) {
+        const txt = await valRes.text()
+        const classified = classifySheetsError(valRes.status, txt)
+        return NextResponse.json({ error: classified.message }, { status: classified.status })
+      }
+      const valJson = (await valRes.json()) as { values?: string[][] }
+      values = valJson.values ?? []
+    } else {
+      // Sheets API が使えない（未有効化・スコープ不足等）→ 公開CSVフォールバック
+      const txt = await metaRes.text()
+      const csvValues = await fetchViaPublicCsv(id, targetGid)
+      if (!csvValues) {
+        const classified = classifySheetsError(metaRes.status, txt)
+        return NextResponse.json({ error: classified.message }, { status: classified.status })
+      }
+      values = csvValues
+      viaPublicCsv = true
+      sheetTitle = targetGid ? `URLで指定されたタブ` : "先頭のタブ"
+      tabs = [{ gid: targetGid ?? "0", title: sheetTitle }]
     }
-
-    // 2) 値を取得
-    const range = encodeURIComponent(sheetTitle)
-    const valRes = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${range}?valueRenderOption=FORMATTED_VALUE`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    )
-    if (!valRes.ok) {
-      const txt = await valRes.text()
-      const classified = classifySheetsError(valRes.status, txt)
-      return NextResponse.json({ error: classified.message }, { status: classified.status })
-    }
-    const valJson = (await valRes.json()) as { values?: string[][] }
-    const values = valJson.values ?? []
     if (values.length < 2) {
       // プレビュー時はタブ一覧を返して、別タブを選び直せるようにする
       if (body.preview) {
@@ -187,6 +232,12 @@ export async function POST(request: Request) {
         rowCount: rows.length,
         sampleRows: rows.slice(0, 3),
         suggestedMapping: suggestMapping(header.filter(Boolean)),
+        ...(viaPublicCsv
+          ? {
+              warning:
+                "リンク共有（閲覧可）経由で読み込みました。別のタブを取り込む場合は、そのタブを開いた状態のURL（#gid=…付き）を貼り直してください。",
+            }
+          : {}),
       })
     }
 

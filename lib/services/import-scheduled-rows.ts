@@ -37,10 +37,23 @@ const HEADER_ALIASES: Record<string, string> = {
   予約日時: "scheduledFor",
   投稿日時: "scheduledFor",
   日時: "scheduledFor",
+  // GMOエクスポート形式: 日付と時間が別列
+  予約投稿日: "scheduledDate",
+  投稿日: "scheduledDate",
+  日付: "scheduledDate",
+  予約投稿時間: "scheduledTime",
+  投稿時間: "scheduledTime",
+  時間: "scheduledTime",
+  即時投稿: "immediateFlag",
+  下書き保存: "draftFlag",
+  下書き: "draftFlag",
   summary: "summary",
   本文: "summary",
   投稿内容: "summary",
   内容: "summary",
+  投稿内容2: "summary2",
+  投稿内容２: "summary2",
+  ハッシュタグ: "hashtags",
   posttype: "postType",
   post_type: "postType",
   投稿タイプ: "postType",
@@ -52,9 +65,11 @@ const HEADER_ALIASES: Record<string, string> = {
   ctatype: "ctaType",
   cta_type: "ctaType",
   cta種別: "ctaType",
+  ボタンの追加: "ctaType",
   ctaurl: "ctaUrl",
   cta_url: "ctaUrl",
   ctaリンク: "ctaUrl",
+  ボタンurl: "ctaUrl",
 }
 
 function normalizeKey(k: string): string {
@@ -106,12 +121,18 @@ const VALID_CTA = ["BOOK", "ORDER", "SHOP", "LEARN_MORE", "SIGN_UP", "CALL"]
  * 対応: ISO / "2026-07-15 10:00" / "2026/07/15" / "2026年7月15日 10時" /
  *       Excelシリアル値(数値) / Date型
  */
+/** タイムゾーンなしの日時を日本時間(JST)として Date を作る（サーバーはUTCのため必須） */
+function jstDate(y: number, mo: number, d: number, h = 0, mi = 0): Date | null {
+  const date = new Date(Date.UTC(y, mo - 1, d, h - 9, mi))
+  return isNaN(date.getTime()) ? null : date
+}
+
 function parseDateFlexible(raw: unknown): Date | null {
   if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw
 
-  // Excel シリアル値（1900/1/1 起点）
+  // Excel シリアル値（1900/1/1 起点・シート上の時刻はJSTの壁時計とみなす）
   if (typeof raw === "number" && raw > 0 && raw < 100000) {
-    const ms = Math.round((raw - 25569) * 86400 * 1000)
+    const ms = Math.round((raw - 25569) * 86400 * 1000) - 9 * 3600 * 1000
     const d = new Date(ms)
     return isNaN(d.getTime()) ? null : d
   }
@@ -120,33 +141,81 @@ function parseDateFlexible(raw: unknown): Date | null {
   let s = raw.trim()
   if (!s) return null
 
-  // 全角数字・記号を半角へ
-  s = s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+  // 全角数字・コロンを半角へ
+  s = s
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/：/g, ":")
 
-  // 和暦風「2026年7月15日 10時30分」→ "2026-07-15 10:30"
+  // タイムゾーン付きISO（Z / +09:00 等）はそのまま
+  if (/\d(Z|[+-]\d{2}:?\d{2})$/.test(s)) {
+    const d = new Date(s)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  // 和暦風「2026年7月15日 10時30分」
   const jp = s.match(
     /(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日?\s*(?:(\d{1,2})時\s*(?:(\d{1,2})分?)?)?/
   )
   if (jp) {
     const [, y, mo, da, hh = "0", mi = "0"] = jp
-    const d = new Date(
-      Number(y),
-      Number(mo) - 1,
-      Number(da),
-      Number(hh),
-      Number(mi)
-    )
-    return isNaN(d.getTime()) ? null : d
+    return jstDate(Number(y), Number(mo), Number(da), Number(hh), Number(mi))
   }
 
-  // "2026/07/15 10:00" / "2026-07-15T10:00" / "2026.07.15" などを正規化
-  const norm = s.replace(/[./]/g, "-").replace(/\s+/, " ")
-  let d = new Date(norm)
-  if (!isNaN(d.getTime())) return d
+  // "2026-07-15 10:00" / "2026/7/15" / "2026.07.15T09:00"（年が先頭）
+  const ymd = s.match(
+    /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2}))?/
+  )
+  if (ymd) {
+    const [, y, mo, da, hh = "0", mi = "0"] = ymd
+    return jstDate(Number(y), Number(mo), Number(da), Number(hh), Number(mi))
+  }
 
-  // 時刻なし日付にT00:00を補って再試行
-  d = new Date(norm.replace(" ", "T"))
-  return isNaN(d.getTime()) ? null : d
+  // "5/26/2026 9:00" / "5/26/26 9:00"（GMOエクスポートの米国式 M/D/YYYY・M/D/YY）
+  const mdy = s.match(
+    /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})(?:[ T](\d{1,2}):(\d{1,2}))?/
+  )
+  if (mdy) {
+    const [, mo, da, yRaw, hh = "0", mi = "0"] = mdy
+    const y = yRaw.length === 2 ? 2000 + Number(yRaw) : Number(yRaw)
+    return jstDate(y, Number(mo), Number(da), Number(hh), Number(mi))
+  }
+
+  return null
+}
+
+/** 日本語の投稿タイプ → API値（GMOエクスポート対応） */
+const POST_TYPE_JA: Record<string, string> = {
+  最新情報: "STANDARD",
+  通常: "STANDARD",
+  スタンダード: "STANDARD",
+  イベント: "EVENT",
+  特典: "OFFER",
+  クーポン: "OFFER",
+  オファー: "OFFER",
+  臨時情報: "ALERT",
+  緊急: "ALERT",
+}
+
+/** 日本語のボタン種別 → CTA API値（GMOエクスポート対応） */
+const CTA_JA: Record<string, string> = {
+  詳細: "LEARN_MORE",
+  詳しくはこちら: "LEARN_MORE",
+  詳しく: "LEARN_MORE",
+  予約: "BOOK",
+  注文: "ORDER",
+  オンライン注文: "ORDER",
+  購入: "SHOP",
+  登録: "SIGN_UP",
+  申し込む: "SIGN_UP",
+  電話: "CALL",
+  今すぐ電話: "CALL",
+}
+
+/** ○/はい/TRUE などのフラグ判定 */
+function isFlagged(v: unknown): boolean {
+  if (typeof v !== "string") return false
+  const s = v.trim().toLowerCase()
+  return ["○", "◯", "〇", "はい", "yes", "true", "1"].includes(s)
 }
 
 export interface ImportResult {
@@ -196,6 +265,31 @@ export async function importScheduledRows(
     return null
   }
 
+  // 画像アーカイブ（ファイル名 → URL）: 画像列にファイル名が入っている行がある場合のみ取得
+  const needsArchive = rows.some((row) => {
+    const v = pickField(row, "mediaUrl", mapping)
+    return typeof v === "string" && v.trim() && !v.trim().startsWith("http")
+  })
+  const sanitizeName = (name: string) =>
+    name.replace(/[^a-zA-Z0-9._-]/g, "_").toLowerCase()
+  const archiveIndex = new Map<string, string>()
+  if (needsArchive && process.env.BLOB_READ_WRITE_TOKEN) {
+    try {
+      const { list } = await import("@vercel/blob")
+      let cursor: string | undefined
+      do {
+        const page = await list({ prefix: "post-images/", limit: 500, cursor })
+        for (const b of page.blobs) {
+          const base = (b.pathname.split("/").pop() ?? "").replace(/^\d{13}-/, "")
+          archiveIndex.set(sanitizeName(base), b.url)
+        }
+        cursor = page.cursor ?? undefined
+      } while (cursor && archiveIndex.size < 2000)
+    } catch {
+      /* アーカイブ取得失敗時はファイル名解決なしで続行 */
+    }
+  }
+
   const errors: Array<{ rowIndex: number; error: string; rowData: unknown }> = []
   const toInsert: Array<{
     locationName: string
@@ -204,14 +298,21 @@ export async function importScheduledRows(
     summary: string
     mediaUrls: string[] | null
     callToAction: { actionType?: string; url?: string } | null
+    status: string
   }> = []
 
   rows.forEach((row, idx) => {
     const rowIndex = idx + 2 // 1 = 見出し
     const locRaw = pickField(row, "locationName", mapping)
     const storeNameRaw = pickField(row, "storeName", mapping)
-    const dateRaw = pickField(row, "scheduledFor", mapping)
     const summaryRaw = pickField(row, "summary", mapping)
+
+    // 空行（本文も店舗も無い）はスキップ
+    const isEmptyRow =
+      !String(locRaw ?? "").trim() &&
+      !String(storeNameRaw ?? "").trim() &&
+      !String(summaryRaw ?? "").trim()
+    if (isEmptyRow) return
 
     const locationName = resolveLocation(locRaw, storeNameRaw)
     if (!locationName) {
@@ -223,45 +324,97 @@ export async function importScheduledRows(
       return
     }
 
-    const scheduledFor = parseDateFlexible(dateRaw)
+    // 日時: 予約日時（1列） or 予約投稿日+予約投稿時間（2列） or 即時投稿○ → 今すぐ
+    const dateRaw = pickField(row, "scheduledFor", mapping)
+    const dateOnly = pickField(row, "scheduledDate", mapping)
+    const timeOnly = pickField(row, "scheduledTime", mapping)
+    const immediate = isFlagged(pickField(row, "immediateFlag", mapping))
+    const isDraft = isFlagged(pickField(row, "draftFlag", mapping))
+
+    let scheduledFor = parseDateFlexible(dateRaw)
+    if (!scheduledFor && typeof dateOnly === "string" && dateOnly.trim()) {
+      const combined =
+        typeof timeOnly === "string" && timeOnly.trim()
+          ? `${dateOnly.trim()} ${timeOnly.trim()}`
+          : dateOnly.trim()
+      scheduledFor = parseDateFlexible(combined)
+    }
+    if (!scheduledFor && (immediate || isDraft)) {
+      scheduledFor = new Date() // 即時投稿/日時なし下書きは「今」で登録（実行は手動）
+    }
     if (!scheduledFor) {
-      const shown =
-        dateRaw === undefined || dateRaw === null || dateRaw === ""
-          ? "（日時の列が空、または列が未対応）"
-          : JSON.stringify(dateRaw)
+      const shownVal = [dateRaw, dateOnly, timeOnly]
+        .filter((v) => typeof v === "string" && v.trim())
+        .join(" ")
       errors.push({
         rowIndex,
-        error: `予約日時を読み取れません: ${shown}`,
+        error: shownVal
+          ? `予約日時を読み取れません: 「${shownVal}」`
+          : "予約日時を読み取れません（日時列が空・未対応。即時投稿○も未設定）",
         rowData: row,
       })
       return
     }
 
-    const summary = typeof summaryRaw === "string" ? summaryRaw.trim() : ""
+    // 本文 = 投稿内容 + 投稿内容2 + ハッシュタグ
+    let summary = typeof summaryRaw === "string" ? summaryRaw.trim() : ""
+    const summary2 = pickField(row, "summary2", mapping)
+    if (typeof summary2 === "string" && summary2.trim()) {
+      summary = summary ? `${summary}\n\n${summary2.trim()}` : summary2.trim()
+    }
+    const hashtags = pickField(row, "hashtags", mapping)
+    if (typeof hashtags === "string" && hashtags.trim()) {
+      summary = summary ? `${summary}\n\n${hashtags.trim()}` : hashtags.trim()
+    }
     if (!summary) {
       errors.push({ rowIndex, error: "本文が空です", rowData: row })
       return
     }
+    summary = summary.slice(0, 1500)
 
+    // 投稿タイプ（日本語対応: 最新情報→STANDARD 等）
     let postType = "STANDARD"
     const pt = pickField(row, "postType", mapping)
     if (typeof pt === "string" && pt.trim()) {
-      const upper = pt.trim().toUpperCase()
+      const t = pt.trim()
+      const upper = t.toUpperCase()
       if (VALID_POST_TYPES.includes(upper)) postType = upper
+      else if (POST_TYPE_JA[t]) postType = POST_TYPE_JA[t]
     }
 
-    const mediaUrl = pickField(row, "mediaUrl", mapping)
-    const mediaUrls =
-      typeof mediaUrl === "string" && mediaUrl.trim() ? [mediaUrl.trim()] : null
+    // 画像: URL ならそのまま / ファイル名なら画像アーカイブから解決
+    let mediaUrls: string[] | null = null
+    const mediaRaw = pickField(row, "mediaUrl", mapping)
+    if (typeof mediaRaw === "string" && mediaRaw.trim()) {
+      const v = mediaRaw.trim()
+      if (v.startsWith("http")) {
+        mediaUrls = [v]
+      } else {
+        const hit = archiveIndex.get(sanitizeName(v))
+        if (hit) {
+          mediaUrls = [hit]
+        } else {
+          errors.push({
+            rowIndex,
+            error: `画像「${v}」が画像アーカイブにありません。投稿ページの「画像アーカイブ」から先にアップロードしてください（この行は取り込まれていません）`,
+            rowData: row,
+          })
+          return
+        }
+      }
+    }
 
+    // CTA（日本語対応: 詳細→LEARN_MORE 等）
     let callToAction: { actionType: string; url?: string } | null = null
     const ctaTypeRaw = pickField(row, "ctaType", mapping)
     const ctaUrlRaw = pickField(row, "ctaUrl", mapping)
     if (typeof ctaTypeRaw === "string" && ctaTypeRaw.trim()) {
-      const upper = ctaTypeRaw.trim().toUpperCase()
-      if (VALID_CTA.includes(upper)) {
+      const t = ctaTypeRaw.trim()
+      const upper = t.toUpperCase()
+      const action = VALID_CTA.includes(upper) ? upper : (CTA_JA[t] ?? null)
+      if (action) {
         callToAction = {
-          actionType: upper,
+          actionType: action,
           ...(typeof ctaUrlRaw === "string" && ctaUrlRaw.trim()
             ? { url: ctaUrlRaw.trim() }
             : {}),
@@ -269,7 +422,15 @@ export async function importScheduledRows(
       }
     }
 
-    toInsert.push({ locationName, scheduledFor, postType, summary, mediaUrls, callToAction })
+    toInsert.push({
+      locationName,
+      scheduledFor,
+      postType,
+      summary,
+      mediaUrls,
+      callToAction,
+      status: isDraft ? "draft" : "pending",
+    })
   })
 
   let insertedCount = 0
@@ -284,7 +445,7 @@ export async function importScheduledRows(
           summary: row.summary,
           mediaUrls: row.mediaUrls,
           callToAction: row.callToAction,
-          status: "pending",
+          status: row.status,
         }))
       )
       .returning({ id: scheduledPosts.id })
