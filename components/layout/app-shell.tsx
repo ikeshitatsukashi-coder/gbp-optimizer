@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
+import { AutoExecTrigger } from "@/components/auto-exec-trigger"
 
 /** サイドバー・ヘッダーを付けない公開ページ（認証なしでお客様が見る画面） */
 const PUBLIC_PREFIXES = ["/s/", "/share/"]
@@ -17,6 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <AutoExecTrigger />
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />

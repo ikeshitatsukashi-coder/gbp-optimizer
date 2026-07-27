@@ -114,7 +114,7 @@ export default function ScheduledPostsPage() {
   const enableAuto = async () => {
     if (
       !confirm(
-        "自動実行を有効化しますか？\n\n現在ログイン中のGoogleアカウントの権限で、期日が来た予約投稿を15分おきに自動投稿するようになります。\n※投稿権限のあるアカウント（meo-support@li-go.jp）でログインした状態で押してください。"
+        "自動実行を有効化しますか？\n\n現在ログイン中のGoogleアカウントの権限で、期日が来た予約投稿を自動投稿するようになります。\n※投稿権限のあるアカウント（meo-support@li-go.jp）でログインした状態で押してください。"
       )
     )
       return
@@ -124,7 +124,7 @@ export default function ScheduledPostsPage() {
       const res = await fetch("/api/cron/setup", { method: "POST" })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
-      setSuccess("自動実行を有効化しました。期日が来た予約は15分おきに自動投稿されます。")
+      setSuccess("自動実行を有効化しました。期日が来た予約は自動で投稿されます。")
       await loadAutoStatus()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -247,7 +247,7 @@ export default function ScheduledPostsPage() {
             自動投稿スケジューラ
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            未来の日時を指定して投稿を予約。期日が来ると 15 分以内に自動投稿されます。
+            未来の日時を指定して投稿を予約。期日が来ると自動投稿されます。
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -288,7 +288,7 @@ export default function ScheduledPostsPage() {
             {autoStatus.configured ? (
               <>
                 <p className="font-bold text-green-900">
-                  自動実行: 有効（15分おきに期日到来分を自動投稿）
+                  自動実行: 有効（定期チェック＋ツール利用時に自動投稿）
                 </p>
                 <p className="text-xs text-green-800 mt-0.5">
                   権限: {autoStatus.savedBy}
@@ -304,7 +304,7 @@ export default function ScheduledPostsPage() {
                 </p>
                 <p className="text-xs text-amber-800 mt-0.5">
                   meo-support@li-go.jp
-                  でログインした状態で右のボタンを押すと、以後は期日が来た予約が15分おきに自動投稿されます。
+                  でログインした状態で右のボタンを押すと、以後は期日が来た予約が自動投稿されます。
                 </p>
               </>
             )}
@@ -569,7 +569,7 @@ export default function ScheduledPostsPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        ※ 自動実行が有効なら、期日が来た予約は約15分以内に自動投稿されます（1回の実行で最大20件、残りは次回に処理）。急ぎの場合は「期日到来分を今すぐ実行」で即時実行できます。
+        ※ 自動実行が有効なら、期日が来た予約は定期チェック（1〜数時間ごと）と、誰かがこのツールを開いたタイミング（最短10分間隔）で自動投稿されます。1回につき最大20件、残りは次回に処理。すぐ投稿したい場合は「期日到来分を今すぐ実行」を押してください。
       </p>
     </div>
   )
