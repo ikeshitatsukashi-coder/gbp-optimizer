@@ -69,7 +69,7 @@ function sumValues(points: TimeSeriesPoint[]): number {
 export default function InsightsPage() {
   const { locationName } = useGbp()
   // Google Business Profile Performance API は最大18ヶ月まで遡れる
-  const [days, setDays] = useState<7 | 30 | 90 | 180 | 365 | 540>(30)
+  const [days, setDays] = useState<7 | 30 | 90 | 180 | 365 | 520>(30)
   const [data, setData] = useState<InsightsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -168,7 +168,7 @@ export default function InsightsPage() {
               { n: 90, label: "直近90日" },
               { n: 180, label: "6ヶ月" },
               { n: 365, label: "1年" },
-              { n: 540, label: "18ヶ月（最大）" },
+              { n: 520, label: "17ヶ月（最大）" },
             ] as const
           ).map(({ n, label }) => (
             <button

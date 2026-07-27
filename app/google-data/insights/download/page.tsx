@@ -74,7 +74,7 @@ function buildCsv(data: InsightsResponse, storeName: string): string {
 
 export default function InsightsDownloadPage() {
   const { locationName, locations } = useGbp()
-  const [days, setDays] = useState<7 | 30 | 90 | 180 | 365 | 540>(30)
+  const [days, setDays] = useState<7 | 30 | 90 | 180 | 365 | 520>(30)
   const [data, setData] = useState<InsightsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -157,7 +157,7 @@ export default function InsightsDownloadPage() {
           <div>
             <label className="text-xs text-muted-foreground block mb-1">期間</label>
             <div className="flex gap-2">
-              {([7, 30, 90, 180, 365, 540] as const).map((n) => (
+              {([7, 30, 90, 180, 365, 520] as const).map((n) => (
                 <button
                   key={n}
                   onClick={() => setDays(n)}
