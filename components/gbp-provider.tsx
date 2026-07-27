@@ -81,42 +81,76 @@ export function GbpProvider({ children }: { children: React.ReactNode }) {
 
     setLoading(true)
     try {
-      const accRes = await fetch("/api/gbp/accounts")
-      if (!accRes.ok) {
-        console.error("Accounts API error:", accRes.status)
-        return
-      }
-      const accData = await accRes.json()
-      const accounts = accData.accounts
-      if (!accounts || accounts.length === 0) return
+      let mapped: GbpLocation[] = []
 
-      const accId = accounts[0].name
-      setAccountId(accId)
-
-      const locRes = await fetch(`/api/gbp/locations?accountId=${encodeURIComponent(accId)}`)
-      if (!locRes.ok) {
-        console.error("Locations API error:", locRes.status)
-        return
-      }
-      const locData = await locRes.json()
-      const locs = locData.locations
-      if (!locs || locs.length === 0) return
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped: GbpLocation[] = locs.map((l: any) => {
-        const addr = l.storefrontAddress
-        const addressLine = addr
-          ? [addr.administrativeArea, addr.locality, ...(addr.addressLines || [])]
-              .filter(Boolean)
-              .join(" ")
-          : ""
-        return {
-          name: l.name,
-          title: l.title || l.name,
-          address: addressLine,
+      // 1) まず社内DB（同期済み店舗マスタ）から即座に取得する。
+      //    Google API を毎回叩くと478店舗のページングで数十秒かかり
+      //    タイムアウトして「店舗なし」になるため。
+      try {
+        const dbRes = await fetch("/api/stores?status=active&limit=2000")
+        if (dbRes.ok) {
+          const dbData = await dbRes.json()
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          mapped = (dbData.stores ?? []).map((s: any) => {
+            const addr = s.address
+            const addressLine = addr
+              ? [addr.administrativeArea, addr.locality, ...(addr.addressLines || [])]
+                  .filter(Boolean)
+                  .join(" ")
+              : ""
+            return {
+              name: s.locationName,
+              title: s.title || s.locationName,
+              address: addressLine,
+            }
+          })
+          const firstAccount = (dbData.stores ?? [])[0]?.accountName
+          if (firstAccount) setAccountId(firstAccount)
         }
-      })
+      } catch (e) {
+        console.error("DB stores fetch failed:", e)
+      }
 
+      // 2) DBが空（初回・未同期）のときだけ Google API にフォールバック
+      if (mapped.length === 0) {
+        const accRes = await fetch("/api/gbp/accounts")
+        if (!accRes.ok) {
+          console.error("Accounts API error:", accRes.status)
+          return
+        }
+        const accData = await accRes.json()
+        const accounts = accData.accounts
+        if (!accounts || accounts.length === 0) return
+
+        const accId = accounts[0].name
+        setAccountId(accId)
+
+        const locRes = await fetch(`/api/gbp/locations?accountId=${encodeURIComponent(accId)}`)
+        if (!locRes.ok) {
+          console.error("Locations API error:", locRes.status)
+          return
+        }
+        const locData = await locRes.json()
+        const locs = locData.locations
+        if (!locs || locs.length === 0) return
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mapped = locs.map((l: any) => {
+          const addr = l.storefrontAddress
+          const addressLine = addr
+            ? [addr.administrativeArea, addr.locality, ...(addr.addressLines || [])]
+                .filter(Boolean)
+                .join(" ")
+            : ""
+          return {
+            name: l.name,
+            title: l.title || l.name,
+            address: addressLine,
+          }
+        })
+      }
+
+      if (mapped.length === 0) return
       setAllLocations(mapped)
 
       // Pick first non-archived as default

@@ -53,8 +53,9 @@ async function executeOne(
   if (post.callToAction?.actionType) {
     body.callToAction = post.callToAction
   }
+  // Google の仕様上、1投稿に添付できる写真は1枚まで（複数送ると INVALID_ARGUMENT）
   if (post.mediaUrls && post.mediaUrls.length > 0) {
-    body.media = post.mediaUrls.map((url) => ({ mediaFormat: "PHOTO", sourceUrl: url }))
+    body.media = [{ mediaFormat: "PHOTO", sourceUrl: post.mediaUrls[0] }]
   }
   try {
     const result = await client.createPost(post.accountName, post.locationName, body)

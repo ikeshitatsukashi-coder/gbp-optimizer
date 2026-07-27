@@ -135,10 +135,11 @@ export async function POST(request: Request) {
         scheduledFor: scheduledDate,
         postType: body.postType ?? "STANDARD",
         summary: body.summary.trim(),
-        // mediaUrls 配列を優先、旧 mediaUrl 単体も許容（Excelインポート互換）。最大10枚
+        // mediaUrls 配列を優先、旧 mediaUrl 単体も許容（Excelインポート互換）。
+        // Google の仕様上、1投稿の写真は1枚まで
         mediaUrls:
           Array.isArray(body.mediaUrls) && body.mediaUrls.length > 0
-            ? body.mediaUrls.slice(0, 10)
+            ? body.mediaUrls.slice(0, 1)
             : body.mediaUrl
               ? [body.mediaUrl]
               : null,

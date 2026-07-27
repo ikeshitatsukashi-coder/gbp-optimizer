@@ -1495,15 +1495,15 @@ function NewPostModal({
               <button
                 type="button"
                 onClick={() => setImageLibraryOpen(true)}
-                disabled={mediaUrls.length >= 10}
+                disabled={mediaUrls.length >= 1}
                 className="text-sm text-[#4a90e2] border border-[#4a90e2] rounded px-4 h-9 hover:bg-blue-50 disabled:opacity-50"
               >
                 ファイル選択
               </button>
               <span className="text-xs text-gray-500">
                 {mediaUrls.length === 0
-                  ? "選択されていません。（最大10枚・PC からのアップロード可・自動リサイズ）"
-                  : `${mediaUrls.length} / 10 枚`}
+                  ? "選択されていません。（Googleの仕様により1投稿につき画像1枚・PCからアップロード可・自動リサイズ）"
+                  : `${mediaUrls.length} / 1 枚`}
               </span>
             </div>
             {mediaUrls.length > 0 && (
@@ -1722,9 +1722,9 @@ function NewPostModal({
         isOpen={imageLibraryOpen}
         onClose={() => setImageLibraryOpen(false)}
         locationName={store || defaultLocationName}
-        maxCount={10 - mediaUrls.length}
+        maxCount={1 - mediaUrls.length}
         onSelect={(urls) =>
-          setMediaUrls((prev) => [...prev, ...urls].slice(0, 10))
+          setMediaUrls((prev) => [...prev, ...urls].slice(0, 1))
         }
       />
     </div>

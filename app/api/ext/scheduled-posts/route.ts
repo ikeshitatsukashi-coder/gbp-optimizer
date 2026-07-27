@@ -154,7 +154,7 @@ export async function POST(request: Request) {
         summary: body.summary.trim(),
         mediaUrls:
           Array.isArray(body.mediaUrls) && body.mediaUrls.length > 0
-            ? body.mediaUrls.slice(0, 10)
+            ? body.mediaUrls.slice(0, 1)
             : null,
         status: body.draft ? "draft" : "pending",
       })

@@ -61,6 +61,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Google の仕様上、1投稿に添付できる写真は1枚まで（複数送ると INVALID_ARGUMENT）
+    if (Array.isArray(post.media) && post.media.length > 1) {
+      post.media = [post.media[0]]
+    }
+
     const client = createGmbClient(accessToken)
     const result = await client.createPost(accountName, locationName, post)
     return NextResponse.json(result)
