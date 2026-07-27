@@ -15,6 +15,7 @@ import {
   XCircle,
   Ban,
 } from "lucide-react"
+import { useGbp } from "@/lib/store"
 
 interface Candidate {
   reviewName: string
@@ -54,6 +55,13 @@ function formatDate(iso: string | null): string {
 }
 
 export default function ReviewFlagBatchPage() {
+  const { locationName, locations } = useGbp()
+  const currentStoreTitle = useMemo(
+    () => locations.find((l) => l.name === locationName)?.title ?? null,
+    [locations, locationName]
+  )
+  // 上部プルダウンの店舗だけに絞るか（既定: 絞る）
+  const [onlyCurrentStore, setOnlyCurrentStore] = useState(true)
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
@@ -71,6 +79,8 @@ export default function ReviewFlagBatchPage() {
     try {
       const params = new URLSearchParams()
       if (search.trim()) params.set("storeFilter", search.trim())
+      // 上部プルダウンで選択中の店舗に限定（GMOと同じ挙動）
+      if (onlyCurrentStore && locationName) params.set("locationName", locationName)
       const res = await fetch(`/api/reviews/candidates?${params.toString()}`)
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
@@ -80,7 +90,7 @@ export default function ReviewFlagBatchPage() {
     } finally {
       setLoading(false)
     }
-  }, [search])
+  }, [search, onlyCurrentStore, locationName])
 
   useEffect(() => {
     if (enabled) fetchCandidates()
@@ -310,7 +320,7 @@ export default function ReviewFlagBatchPage() {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">
-                  店舗名で絞り込み
+                  店舗名でさらに絞り込み
                 </label>
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
@@ -318,12 +328,30 @@ export default function ReviewFlagBatchPage() {
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="例: 株式会社LIGO"
+                    placeholder="店舗名の一部"
                     className="w-full h-8 pl-7 pr-2 text-sm border rounded bg-background"
                   />
                 </div>
               </div>
             </div>
+
+            {/* 対象範囲: 既定は上部プルダウンの店舗のみ */}
+            <label className="flex items-center gap-2 text-sm mt-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={onlyCurrentStore}
+                onChange={(e) => setOnlyCurrentStore(e.target.checked)}
+              />
+              <span>
+                選択中の店舗のみ表示
+                {currentStoreTitle && (
+                  <span className="font-bold text-[#4a90e2]">（{currentStoreTitle}）</span>
+                )}
+                <span className="text-xs text-muted-foreground ml-1">
+                  ※チェックを外すと全店舗の候補を表示します
+                </span>
+              </span>
+            </label>
             <div className="flex items-center gap-2 mt-4">
               <Button
                 onClick={toggleAll}

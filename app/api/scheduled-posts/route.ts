@@ -34,7 +34,8 @@ export async function GET(request: Request) {
         p.status,
         p.executed_at,
         p.error_message,
-        p.created_at
+        p.created_at,
+        p.result
       FROM scheduled_posts p
       INNER JOIN stores s ON s.location_name = p.location_name
       WHERE 1=1
@@ -65,6 +66,9 @@ export async function GET(request: Request) {
           ? new Date(row.executed_at as string | Date).toISOString()
           : null,
         errorMessage: row.error_message,
+        // 実投稿後に Google が返した投稿名（v4一覧との重複判定に使う）
+        resultName:
+          (row.result as { name?: string } | null)?.name ?? null,
         createdAt: new Date(row.created_at as string | Date).toISOString(),
       })),
     })

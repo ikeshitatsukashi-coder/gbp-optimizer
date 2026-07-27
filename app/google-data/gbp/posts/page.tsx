@@ -42,6 +42,7 @@ interface ScheduledPost {
   status: string
   executedAt: string | null
   errorMessage: string | null
+  resultName?: string | null
   createdAt?: string
 }
 
@@ -76,6 +77,7 @@ const POST_TYPE_LABELS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   LIVE: "投稿済",
   posted: "投稿済",
+  posted_syncing: "投稿済（Google反映待ち）",
   pending: "投稿待ち",
   draft: "下書き",
   failed: "エラー投稿",
@@ -84,6 +86,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   LIVE: "text-[#4a90e2]",
   posted: "text-[#4a90e2]",
+  posted_syncing: "text-[#4a90e2]",
   pending: "text-gray-700",
   draft: "text-gray-500",
   failed: "text-red-600",
@@ -357,12 +360,38 @@ export default function PostsPage() {
       scheduledId: sp.id,
     }))
 
-    // タブ別: 投稿済 = v4 の公開済み投稿 + 実行済み予約（投稿済/失敗のうち posted）
+    // タブ別: 投稿済 = v4 の公開済み投稿 ＋ 実行済み予約（Google側の反映待ち分）
     //          投稿待ち = 予約中 (pending) / 下書き (draft) / エラー (failed)
-    // ※ posted の予約レコードは v4 側にも現れて二重表示になるため queued からは除外
+    // Google の投稿一覧APIは実投稿から反映まで時間がかかるため、
+    // DB上 posted のレコードをマージして「投稿済（反映待ち）」として即座に見せる。
+    const liveNames = new Set(published.map((post) => post.name))
+    const postedPending = scheduled
+      .filter(
+        (sp) => sp.status === "posted" && !(sp.resultName && liveNames.has(sp.resultName))
+      )
+      .map((sp) => ({
+        key: `sp:${sp.id}`,
+        source: "scheduled" as const,
+        no: 0,
+        imageUrl: sp.mediaUrls?.[0] ?? null,
+        postType: sp.postType,
+        title: extractTitle(sp.summary),
+        inputDate: sp.createdAt ?? null,
+        storeName: sp.storeName,
+        scheduledFor: sp.executedAt ?? sp.scheduledFor,
+        startAt: null,
+        repeat: "—",
+        nextRepeat: null,
+        status: "posted_syncing",
+        wfApproval: "WFなし",
+        summary: sp.summary,
+        cta: sp.callToAction ?? null,
+        scheduledId: sp.id,
+      }))
+
     const source =
       tab === "published"
-        ? p
+        ? [...p, ...postedPending]
         : s.filter((r) => r.status === "pending" || r.status === "draft" || r.status === "failed")
 
     const all = [...source].sort((a, b) => {

@@ -5,6 +5,7 @@ import { errorResponse } from "@/lib/api-helpers"
 
 /**
  * GET /api/reviews/candidates
+ *   ?locationName=...    対象店舗（上部プルダウンで選択中の店舗に限定）
  *   ?storeFilter=...     店舗名部分一致
  *   ?cooldownDays=N      連投ガード日数（default 14）
  *
@@ -18,11 +19,19 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url)
   const storeFilter = url.searchParams.get("storeFilter") ?? undefined
+  const locationNameRaw = url.searchParams.get("locationName")
+  const locationNames = locationNameRaw
+    ? [
+        locationNameRaw.startsWith("locations/")
+          ? locationNameRaw
+          : `locations/${locationNameRaw}`,
+      ]
+    : undefined
   const cooldownDaysRaw = url.searchParams.get("cooldownDays")
   const cooldownDays = cooldownDaysRaw ? Math.max(0, parseInt(cooldownDaysRaw, 10)) : 14
 
   try {
-    const candidates = await getFlagCandidates({ storeFilter, cooldownDays })
+    const candidates = await getFlagCandidates({ locationNames, storeFilter, cooldownDays })
     return NextResponse.json({
       candidates,
       total: candidates.length,
