@@ -14,6 +14,7 @@ import {
   Loader2,
   Image as ImageIcon,
   Info,
+  RefreshCw,
 } from "lucide-react"
 import { useGbp } from "@/lib/store"
 import { ImageLibraryModal } from "@/components/gbp/image-library-modal"
@@ -43,6 +44,7 @@ interface ScheduledPost {
   executedAt: string | null
   errorMessage: string | null
   resultName?: string | null
+  gbpState?: string | null
   createdAt?: string
 }
 
@@ -77,7 +79,9 @@ const POST_TYPE_LABELS: Record<string, string> = {
 const STATUS_LABELS: Record<string, string> = {
   LIVE: "投稿済",
   posted: "投稿済",
-  posted_syncing: "投稿済（Google反映待ち）",
+  posted_syncing: "投稿済（Google処理中）",
+  posted_live: "公開中",
+  posted_missing: "要確認（Google上に無し）",
   pending: "投稿待ち",
   draft: "下書き",
   failed: "エラー投稿",
@@ -86,7 +90,9 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   LIVE: "text-[#4a90e2]",
   posted: "text-[#4a90e2]",
-  posted_syncing: "text-[#4a90e2]",
+  posted_syncing: "text-amber-600",
+  posted_live: "text-[#4a90e2]",
+  posted_missing: "text-red-600",
   pending: "text-gray-700",
   draft: "text-gray-500",
   failed: "text-red-600",
@@ -325,6 +331,40 @@ export default function PostsPage() {
     loadAll()
   }, [loadAll])
 
+  /**
+   * 投稿済みレコードについて Google 側の状態（処理中→公開中／消失）を確認して反映する。
+   * 投稿直後は Google が PROCESSING を返すため、ページを開くたびに追いかける。
+   */
+  const [syncingState, setSyncingState] = useState(false)
+  const syncPostStates = useCallback(
+    async (silent = true) => {
+      setSyncingState(true)
+      try {
+        const res = await fetch("/api/scheduled-posts/sync-state", { method: "POST" })
+        const j = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`)
+        if (!silent) {
+          setSuccess(
+            `反映状況を更新しました: 公開中 ${j.live} 件 / Google処理中 ${j.processing} 件` +
+              (j.missing ? ` / 要確認 ${j.missing} 件` : "")
+          )
+        }
+        await loadScheduled()
+      } catch (e) {
+        if (!silent) setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setSyncingState(false)
+      }
+    },
+    [loadScheduled]
+  )
+
+  // ページを開いた時に一度だけ状態を追いかける
+  useEffect(() => {
+    syncPostStates(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const currentStoreTitle = useMemo(
     () => locations.find((l) => l.name === locationName)?.title ?? "",
     [locations, locationName]
@@ -393,7 +433,12 @@ export default function PostsPage() {
         startAt: null,
         repeat: "—",
         nextRepeat: null,
-        status: "posted_syncing",
+        status:
+          sp.gbpState === "LIVE"
+            ? "posted_live"
+            : sp.gbpState === "NOT_FOUND"
+              ? "posted_missing"
+              : "posted_syncing",
         wfApproval: "WFなし",
         summary: sp.summary,
         cta: sp.callToAction ?? null,
@@ -670,6 +715,20 @@ export default function PostsPage() {
             className="hidden"
           />
         </div>
+
+        <button
+          onClick={() => syncPostStates(false)}
+          disabled={syncingState}
+          className="h-9 px-4 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 flex items-center gap-1.5 disabled:opacity-60"
+          title="投稿がGoogle上で公開されたかを確認します"
+        >
+          {syncingState ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+          反映状況を更新
+        </button>
 
         <button
           onClick={() => setImageManagerOpen(true)}

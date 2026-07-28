@@ -266,6 +266,9 @@ export const scheduledPosts = pgTable(
     executedAt: timestamp("executed_at", { withTimezone: true }),
     /** 実行結果 (postName 等) */
     result: jsonb("result"),
+    /** Google側の投稿状態: PROCESSING / LIVE / NOT_FOUND など（反映確認用） */
+    gbpState: varchar("gbp_state", { length: 30 }),
+    gbpStateCheckedAt: timestamp("gbp_state_checked_at", { withTimezone: true }),
     errorMessage: text("error_message"),
     /** スプシ起源の場合の参照 */
     sourceSheetId: varchar("source_sheet_id", { length: 100 }),

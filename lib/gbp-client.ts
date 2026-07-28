@@ -221,6 +221,24 @@ export function createGmbClient(accessToken: string) {
     },
 
     /**
+     * 投稿1件の現在の状態を取得（v4）
+     * 投稿直後は state=PROCESSING で返り、Google側の処理完了後に LIVE になる。
+     * 削除・却下された場合は 404。
+     * @param postName "accounts/x/locations/y/localPosts/z"
+     */
+    async getPostState(
+      postName: string
+    ): Promise<{ state: string | null; notFound: boolean }> {
+      const res = await fetch(`${baseUrl}/${postName}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (res.status === 404) return { state: null, notFound: true }
+      if (!res.ok) throw new Error(`GMB API error: ${res.status} ${await res.text()}`)
+      const j = (await res.json()) as { state?: string }
+      return { state: j.state ?? null, notFound: false }
+    },
+
+    /**
      * List media items (photos/videos) (v4)
      */
     async listMedia(accountName: string, locationName: string) {
