@@ -157,13 +157,24 @@ export default function PostsPage() {
   const [sheetTabs, setSheetTabs] = useState<{ gid: string; title: string }[]>([])
   const [sheetGid, setSheetGid] = useState<string>("")
 
-  const openSheetModal = () => {
+  /** 取り込みモーダルの状態を初期化（別拠点の作業でURLが残らないよう毎回まっさらにする） */
+  const resetSheetModal = () => {
+    setSheetUrl("")
     setSheetStep("url")
     setSheetPreview(null)
     setSheetMapping({})
     setSheetTabs([])
     setSheetGid("")
+  }
+
+  const openSheetModal = () => {
+    resetSheetModal()
     setSheetModalOpen(true)
+  }
+
+  const closeSheetModal = () => {
+    setSheetModalOpen(false)
+    resetSheetModal()
   }
 
   // ステップ1: プレビュー取得（タブ一覧・見出し・推定マッピング）
@@ -252,7 +263,7 @@ export default function PostsPage() {
         }),
       })
       if (!ok || !data) throw new Error(error ?? "取り込みに失敗しました")
-      setSheetModalOpen(false)
+      closeSheetModal()
       setSuccess(
         `取り込み完了${data.sheetTitle ? `（${data.sheetTitle}）` : ""}: 登録 ${data.inserted} / ${data.totalRows} 件${
           data.errors?.length ? ` / エラー ${data.errors.length} 件` : ""
@@ -958,7 +969,7 @@ export default function PostsPage() {
                 {sheetStep === "map" && "（列の対応づけ）"}
               </h2>
               <button
-                onClick={() => setSheetModalOpen(false)}
+                onClick={() => closeSheetModal()}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X className="h-5 w-5" />
@@ -985,7 +996,7 @@ export default function PostsPage() {
                 />
                 <div className="flex justify-end gap-2">
                   <button
-                    onClick={() => setSheetModalOpen(false)}
+                    onClick={() => closeSheetModal()}
                     disabled={importing}
                     className="h-10 px-6 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50"
                   >
