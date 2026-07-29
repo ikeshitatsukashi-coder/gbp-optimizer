@@ -14,6 +14,7 @@ import {
   Square,
   XCircle,
   Ban,
+  ClipboardCheck,
 } from "lucide-react"
 import { useGbp } from "@/lib/store"
 
@@ -155,6 +156,51 @@ export default function ReviewFlagBatchPage() {
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  /* -------- 手動申請の記録 -------- */
+  const [recordOpen, setRecordOpen] = useState(false)
+  const [recordMethod, setRecordMethod] = useState("gbp_ui")
+  const [recordDate, setRecordDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [recordNote, setRecordNote] = useState("")
+  const [recording, setRecording] = useState(false)
+  const [recordResult, setRecordResult] = useState<string | null>(null)
+
+  /**
+   * GBP管理画面やGoogleのフォームから人が申請した分を「申請済み」として記録する。
+   * Google に削除申請のAPIは無いため、実務上こちらが正規のルートになる。
+   */
+  const handleRecordManual = async () => {
+    if (selected.size === 0) return
+    setRecording(true)
+    setError(null)
+    setRecordResult(null)
+    try {
+      const res = await fetch("/api/reviews/flag-record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reviewNames: Array.from(selected),
+          requestMethod: recordMethod,
+          flaggedAt: recordDate,
+          note: recordNote || undefined,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+      setRecordResult(
+        `${j.recorded} 件を申請済みとして記録しました` +
+          (j.skipped ? `（${j.skipped} 件はクチコミ未同期のためスキップ）` : "")
+      )
+      setSelected(new Set())
+      setRecordOpen(false)
+      setRecordNote("")
+      await fetchCandidates()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRecording(false)
     }
   }
 
@@ -352,7 +398,13 @@ export default function ReviewFlagBatchPage() {
                 </span>
               </span>
             </label>
-            <div className="flex items-center gap-2 mt-4">
+            <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <strong>Google のAPIには削除申請の機能がありません。</strong>
+              「削除申請」ボタンは Google から 404 が返り成功しません（実績: 送信7件すべてエラー）。
+              削除申請はGBP管理画面から人が行い、こちらでは
+              <strong>「申請済みとして記録」</strong>を使ってください。
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-3">
               <Button
                 onClick={toggleAll}
                 variant="outline"
@@ -374,8 +426,9 @@ export default function ReviewFlagBatchPage() {
               <Button
                 onClick={handleBatchFlag}
                 disabled={selected.size === 0 || flagging}
-                variant="destructive"
+                variant="outline"
                 size="sm"
+                title="Google側が未対応のため現在は成功しません"
               >
                 {flagging ? (
                   <>
@@ -389,7 +442,84 @@ export default function ReviewFlagBatchPage() {
                   </>
                 )}
               </Button>
+              <Button
+                onClick={() => setRecordOpen(true)}
+                disabled={selected.size === 0}
+                size="sm"
+              >
+                <ClipboardCheck className="h-3.5 w-3.5" />
+                選択した {selected.size} 件を「申請済み」として記録
+              </Button>
             </div>
+
+            {recordResult && (
+              <div className="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                {recordResult}
+              </div>
+            )}
+
+            {/* 手動申請の記録フォーム */}
+            {recordOpen && (
+              <div className="mt-3 rounded border bg-gray-50 p-3 space-y-3">
+                <div className="text-sm font-medium">
+                  手動でおこなった削除申請を記録します（{selected.size} 件）
+                </div>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">申請方法</label>
+                    <select
+                      value={recordMethod}
+                      onChange={(e) => setRecordMethod(e.target.value)}
+                      className="h-9 rounded border px-2 text-sm bg-white"
+                    >
+                      <option value="gbp_ui">GBP管理画面から申請</option>
+                      <option value="google_form">Googleのフォームから申請</option>
+                      <option value="other">その他</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">申請日</label>
+                    <input
+                      type="date"
+                      value={recordDate}
+                      onChange={(e) => setRecordDate(e.target.value)}
+                      className="h-9 rounded border px-2 text-sm bg-white"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[240px]">
+                    <label className="block text-xs text-gray-500 mb-1">
+                      備考（クライアント報告に載ります）
+                    </label>
+                    <input
+                      value={recordNote}
+                      onChange={(e) => setRecordNote(e.target.value)}
+                      placeholder="例: 事実と異なる内容のため申請"
+                      className="h-9 w-full rounded border px-2 text-sm bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={handleRecordManual} disabled={recording}>
+                    {recording ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        記録中…
+                      </>
+                    ) : (
+                      "記録する"
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setRecordOpen(false)}
+                    disabled={recording}
+                  >
+                    キャンセル
+                  </Button>
+                </div>
+              </div>
+            )}
           </Card>
 
           {/* Candidates list */}
@@ -469,7 +599,9 @@ export default function ReviewFlagBatchPage() {
           </Card>
 
           <p className="text-xs text-muted-foreground">
-            ※ 申請は Google に正式な「ポリシー違反の報告」として送られます。送信履歴は flag_history テーブルに記録され、14日間は同じレビューを再申請しません（クールダウン）。
+            ※ Google のAPIにはクチコミの削除申請（報告）を送る機能がありません。「削除申請」ボタンからのAPI送信は Google 側が 404 を返すため成功しません。
+            実際の申請はGoogleビジネスプロフィールの管理画面から行い、その結果を「申請済みとして記録」してください。
+            記録した内容は「削除レポート（報告用）」でクライアント提出用に出力できます。
           </p>
         </>
       )}

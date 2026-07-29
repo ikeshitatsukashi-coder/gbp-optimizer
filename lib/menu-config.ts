@@ -42,6 +42,7 @@ export const menuConfig: MenuGroup[] = [
       { label: "低評価クチコミ削除申請", href: "/google-data/gbp/review-flag" },
       { label: "削除申請履歴", href: "/google-data/gbp/flag-history" },
       { label: "削除済みクチコミ", href: "/google-data/gbp/deleted-reviews" },
+      { label: "削除レポート（報告用）", href: "/google-data/gbp/deletion-report" },
       { label: "除外レビュー管理", href: "/google-data/gbp/exclusions" },
       { label: "クチコミ分析", href: "/google-data/gbp/review-analysis" },
       { label: "クチコミ評価要約", href: "/google-data/gbp/review-summary" },

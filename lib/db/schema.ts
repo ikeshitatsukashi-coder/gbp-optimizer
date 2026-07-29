@@ -45,6 +45,7 @@ export const flagStatusEnum = pgEnum("flag_status", [
   "failed", // エラー
   "approved", // Google が削除承認（後日確認）
   "rejected", // Google が却下（後日確認）
+  "manual", // 手動で申請した記録（GBP管理画面/Googleフォームから人が申請）
 ])
 
 /** クチコミのアーカイブ理由 */
@@ -203,6 +204,16 @@ export const flagHistory = pgTable(
     flaggedAt: timestamp("flagged_at", { withTimezone: true }).notNull().defaultNow(),
     /** Google から削除確認できた日時（後日UPDATE） */
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    /**
+     * 申請方法。Google に API 経由の削除申請は存在しないため、
+     * 実務ではGBP管理画面やGoogleのフォームから人が申請する。その記録用。
+     * api | gbp_ui | google_form | other
+     */
+    requestMethod: varchar("request_method", { length: 20 }).notNull().default("api"),
+    /** 申請した担当者 */
+    requestedBy: text("requested_by"),
+    /** 申請理由・クライアント報告用メモ */
+    note: text("note"),
   },
   (table) => [
     index("flag_history_review_idx").on(table.reviewName),
