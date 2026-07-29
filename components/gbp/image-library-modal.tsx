@@ -224,7 +224,8 @@ export function ImageLibraryModal({
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(url)) next.delete(url)
-      else if (next.size < maxCount) next.add(url)
+      // 管理モード（URLコピー用）は枚数無制限。投稿添付は maxCount まで
+      else if (mode === "manage" || next.size < maxCount) next.add(url)
       return next
     })
   }
@@ -238,7 +239,19 @@ export function ImageLibraryModal({
   const copyUrl = async (url: string) => {
     await navigator.clipboard.writeText(url)
     setCopiedUrl(url)
-    setTimeout(() => setCopiedUrl(null), 1500)
+    setTimeout(() => setCopiedUrl(null), 1800)
+  }
+
+  /**
+   * 選択中の画像URLを改行区切りでまとめてコピー。
+   * スプレッドシートの「画像」列にそのまま縦方向へ貼り付けられる。
+   */
+  const copySelectedUrls = async () => {
+    const urls = [...selected]
+    if (urls.length === 0) return
+    await navigator.clipboard.writeText(urls.join("\n"))
+    setCopiedUrl("__bulk__")
+    setTimeout(() => setCopiedUrl(null), 2500)
   }
 
   const deleteArchiveImage = async (img: ArchiveImage) => {
@@ -442,6 +455,50 @@ export function ImageLibraryModal({
                 </span>
               </div>
 
+              {/* 一括コピー: スプレッドシートへ縦方向に貼り付ける用 */}
+              <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-100 rounded px-3 py-2 flex-wrap">
+                <p className="text-xs text-blue-900">
+                  {selected.size > 0 ? (
+                    <>
+                      <b>{selected.size} 枚</b>選択中 — まとめてコピーすると1行1URLで貼り付けられます
+                    </>
+                  ) : (
+                    <>
+                      画像をクリックして選択すると、複数のURLをまとめてコピーできます（スプレッドシートの「画像」列に縦方向で貼り付け可）
+                    </>
+                  )}
+                </p>
+                <div className="flex items-center gap-2 shrink-0">
+                  {selected.size > 0 && (
+                    <button
+                      onClick={() => setSelected(new Set())}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      選択解除
+                    </button>
+                  )}
+                  <button
+                    onClick={copySelectedUrls}
+                    disabled={selected.size === 0}
+                    className={`text-xs font-medium rounded px-3 py-1.5 flex items-center gap-1 ${
+                      copiedUrl === "__bulk__"
+                        ? "bg-green-600 text-white"
+                        : "bg-[#4a90e2] text-white hover:bg-[#3a7cc8] disabled:opacity-40"
+                    }`}
+                  >
+                    {copiedUrl === "__bulk__" ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> {selected.size}件コピーしました
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" /> 選択した{selected.size > 0 ? selected.size : ""}件のURLをコピー
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
               {archiveLoading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
                   <Loader2 className="h-4 w-4 animate-spin" /> 読み込み中…
@@ -479,9 +536,13 @@ export function ImageLibraryModal({
                       }`}
                     >
                       <button
-                        onClick={() => mode === "select" && toggleSelect(img.url)}
-                        className="block w-full"
-                        style={{ cursor: mode === "select" ? "pointer" : "default" }}
+                        onClick={() => toggleSelect(img.url)}
+                        className="block w-full cursor-pointer"
+                        title={
+                          mode === "select"
+                            ? "クリックで選択"
+                            : "クリックで選択（複数選べば一括コピーできます）"
+                        }
                       >
                         <div className="aspect-square bg-gray-100 relative">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -507,27 +568,33 @@ export function ImageLibraryModal({
                             {new Date(img.uploadedAt).toLocaleDateString("ja-JP")}・
                             {Math.round(img.size / 1024)}KB
                           </p>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => copyUrl(img.url)}
-                              className="text-gray-400 hover:text-[#4a90e2]"
-                              title="URLをコピー"
-                            >
-                              {copiedUrl === img.url ? (
-                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                              ) : (
-                                <Copy className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => deleteArchiveImage(img)}
-                              className="text-gray-400 hover:text-red-500"
-                              title="削除"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => deleteArchiveImage(img)}
+                            className="text-gray-400 hover:text-red-500 shrink-0"
+                            title="この画像を削除"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
+                        {/* URLコピー: スプレッドシートの「画像」列に貼るための主要操作 */}
+                        <button
+                          onClick={() => copyUrl(img.url)}
+                          className={`mt-1.5 w-full flex items-center justify-center gap-1 text-xs font-medium rounded py-1.5 border transition-colors ${
+                            copiedUrl === img.url
+                              ? "bg-green-50 border-green-300 text-green-700"
+                              : "bg-white border-[#4a90e2] text-[#4a90e2] hover:bg-blue-50"
+                          }`}
+                        >
+                          {copiedUrl === img.url ? (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5" /> コピーしました
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5" /> URLをコピー
+                            </>
+                          )}
+                        </button>
                       </div>
                     </div>
                   )
