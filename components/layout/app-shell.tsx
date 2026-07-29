@@ -6,7 +6,7 @@ import { Header } from "@/components/layout/header"
 import { AutoExecTrigger } from "@/components/auto-exec-trigger"
 
 /** サイドバー・ヘッダーを付けない公開ページ（認証なしでお客様が見る画面） */
-const PUBLIC_PREFIXES = ["/s/", "/share/"]
+const PUBLIC_PREFIXES = ["/s/", "/share/", "/privacy"]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

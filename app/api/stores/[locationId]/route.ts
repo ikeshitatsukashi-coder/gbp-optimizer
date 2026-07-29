@@ -108,6 +108,18 @@ export async function PATCH(
     if (typeof body.parentCompany === "string" || body.parentCompany === null) {
       patch.parentCompany = body.parentCompany
     }
+    // クチコミ通知の設定
+    if (typeof body.notifyEmail === "string" || body.notifyEmail === null) {
+      patch.notifyEmail = body.notifyEmail || null
+    }
+    if (Array.isArray(body.reviewNotifyKeywords) || body.reviewNotifyKeywords === null) {
+      patch.reviewNotifyKeywords = Array.isArray(body.reviewNotifyKeywords)
+        ? body.reviewNotifyKeywords
+            .map((k: unknown) => String(k).trim())
+            .filter(Boolean)
+            .slice(0, 50)
+        : null
+    }
     if (typeof body.notes === "string" || body.notes === null) {
       patch.notes = body.notes
     }

@@ -281,13 +281,19 @@ export default function StoresPage() {
                   <th className="text-left px-3 py-2 font-medium">ステータス</th>
                   <th className="text-center px-3 py-2 font-medium">自動返信</th>
                   <th className="text-center px-3 py-2 font-medium">自動削除申請</th>
+                  <th className="text-center px-3 py-2 font-medium">詳細</th>
                 </tr>
               </thead>
               <tbody>
                 {stores.map((s) => (
                   <tr key={s.locationName} className="border-t hover:bg-muted/30">
                     <td className="px-3 py-2">
-                      <div className="font-medium">{s.title}</div>
+                      <a
+                        href={`/stores/${s.locationName.replace(/^locations\//, "")}`}
+                        className="font-medium text-[#4a90e2] hover:underline"
+                      >
+                        {s.title}
+                      </a>
                       <div className="text-xs text-muted-foreground">
                         {s.primaryCategory ?? ""}
                       </div>
@@ -353,6 +359,15 @@ export default function StoresPage() {
                         className="h-4 w-4 cursor-pointer"
                       />
                     </td>
+                    <td className="px-3 py-2 text-center">
+                      <a
+                        href={`/stores/${s.locationName.replace(/^locations\//, "")}`}
+                        className="text-xs text-[#4a90e2] hover:underline whitespace-nowrap"
+                        title="基本情報・SNS連携・通知設定"
+                      >
+                        設定 →
+                      </a>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -362,7 +377,7 @@ export default function StoresPage() {
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        ※ 店舗名・住所・電話番号は Google から自動同期されます。「業種」「ステータス」「自動返信ON/OFF」「自動削除申請ON/OFF」は社内設定として保持されます。
+        ※ 店舗名・住所・電話番号は Google から自動同期されます。店舗名または「設定 →」から、店舗ごとのSNS連携・クチコミ通知などの詳細設定に進めます。
       </p>
     </div>
   )

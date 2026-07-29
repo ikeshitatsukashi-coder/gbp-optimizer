@@ -91,6 +91,10 @@ export const stores = pgTable(
     placeId: varchar("place_id", { length: 120 }),
     /** Google公式のクチコミ投稿URL（metadata.newReviewUri） */
     newReviewUri: text("new_review_uri"),
+    /** クチコミ投稿通知を送るメールアドレス（未設定なら通知しない） */
+    notifyEmail: text("notify_email"),
+    /** この語を含む新着クチコミのみ通知（空なら全件通知） */
+    reviewNotifyKeywords: jsonb("review_notify_keywords").$type<string[]>(),
     /** 自由メモ */
     notes: text("notes"),
     /** 最後にGoogle APIから情報を同期した時刻 */
@@ -336,6 +340,45 @@ export const appSettings = pgTable("app_settings", {
   updatedBy: text("updated_by"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
+
+/**
+ * 外部サービス連携（SNS等）
+ * provider ごとに1店舗あたり複数アカウントを持てる。
+ * アクセストークンは表示しない前提で保管し、UIには接続状態のみ返す。
+ */
+export const socialConnections = pgTable(
+  "social_connections",
+  {
+    id: serial("id").primaryKey(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** instagram | facebook | line | x | ga4 */
+    provider: varchar("provider", { length: 20 }).notNull(),
+    /** 表示用のアカウント名（@handle / ページ名 等） */
+    accountName: text("account_name"),
+    /** 外部サービス側のID（IGビジネスID / FBページID / LINEチャネルID 等） */
+    externalId: text("external_id"),
+    /** 長期アクセストークン等（画面には返さない） */
+    accessToken: text("access_token"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    /** connected | expired | error | pending */
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    /** 連携ごとの設定（GBPへ転載する/ハッシュタグ除去/電話番号を含む投稿を除外 等） */
+    settings: jsonb("settings").$type<Record<string, unknown>>(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    errorMessage: text("error_message"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("social_connections_location_idx").on(table.locationName),
+    index("social_connections_provider_idx").on(table.provider),
+  ]
+)
+
+export type SocialConnection = typeof socialConnections.$inferSelect
 
 /* -------------------------------------------------------------------------- */
 /*                       アンケート（クチコミ促進）                              */
