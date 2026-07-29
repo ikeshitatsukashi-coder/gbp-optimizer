@@ -3,6 +3,7 @@ import { getAccessToken } from "@/lib/get-session"
 import { flagReview, flagReviewsBatch } from "@/lib/services/flag-review"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * POST /api/reviews/flag
@@ -14,6 +15,9 @@ import { checkRateLimit, getClientId } from "@/lib/rate-limit"
  * v4 :flag を呼び、flag_history に結果を記録する。
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`reviews-flag:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 30,

@@ -17,6 +17,8 @@ import {
   Calendar,
   KeyRound,
   Share2,
+  ClipboardCheck,
+  Settings,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -38,6 +40,8 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Calendar,
   KeyRound,
   Share2,
+  ClipboardCheck,
+  Settings,
 }
 
 export function Sidebar() {

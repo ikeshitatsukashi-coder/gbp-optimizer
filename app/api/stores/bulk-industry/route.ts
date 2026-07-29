@@ -5,6 +5,7 @@ import { getAccessToken } from "@/lib/get-session"
 import { eq, ilike, or, and, sql, type SQL } from "drizzle-orm"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { requireRole } from "@/lib/services/authz"
 
 const VALID_INDUSTRY = new Set([
   "btob_logistics",
@@ -76,6 +77,9 @@ function buildWhere(rule: MapRule): SQL<unknown> | undefined {
  * apply:   ルール順に UPDATE を適用（後勝ち：後のルールが上書き）
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`bulk-industry:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 30,

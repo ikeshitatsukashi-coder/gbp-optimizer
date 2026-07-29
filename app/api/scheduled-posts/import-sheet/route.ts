@@ -7,6 +7,7 @@ import {
   type ColumnMapping,
 } from "@/lib/services/import-scheduled-rows"
 import * as XLSX from "xlsx"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * フォールバック: シートが「リンクを知っている全員が閲覧可」の場合、
@@ -99,6 +100,9 @@ function classifySheetsError(
 }
 
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

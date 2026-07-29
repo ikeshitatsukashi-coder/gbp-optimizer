@@ -2,6 +2,7 @@ import { getAccessToken } from "@/lib/get-session"
 import { createGmbClient } from "@/lib/gbp-client"
 import { getAccountNameForLocation } from "@/lib/services/get-store-account"
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * v4 media create endpoint
@@ -35,6 +36,9 @@ async function createMedia(
 }
 
 export async function POST(request: NextRequest) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

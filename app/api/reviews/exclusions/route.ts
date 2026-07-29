@@ -4,6 +4,7 @@ import { reviewExclusions, reviewsArchive } from "@/lib/db/schema"
 import { getAccessToken } from "@/lib/get-session"
 import { and, eq, sql } from "drizzle-orm"
 import { errorResponse } from "@/lib/api-helpers"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * GET /api/reviews/exclusions
@@ -97,6 +98,9 @@ export async function GET(request: Request) {
  * 指定レビューを除外リストに追加（既に存在すれば更新）。
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
@@ -166,6 +170,9 @@ export async function POST(request: Request) {
  * DELETE /api/reviews/exclusions?id=N または ?reviewName=...
  */
 export async function DELETE(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
@@ -196,6 +203,9 @@ export async function DELETE(request: Request) {
  * Body: { excludeAutoReply?: boolean, excludeAutoFlag?: boolean, reason?: string }
  */
 export async function PATCH(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

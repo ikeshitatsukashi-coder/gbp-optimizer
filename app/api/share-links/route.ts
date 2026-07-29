@@ -6,6 +6,7 @@ import { getAccessToken, getSessionEmail } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
 import { generatePublicToken } from "@/lib/public-link"
 import { createGmbClient } from "@/lib/gbp-client"
+import { requireRole } from "@/lib/services/authz"
 
 /** インサイトのスナップショット取得に時間がかかるため延長 */
 export const maxDuration = 60
@@ -179,6 +180,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
@@ -243,6 +247,9 @@ export async function POST(request: Request) {
 
 /** PATCH ?id=&action=refresh … インサイトスナップショットを更新 */
 export async function PATCH(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
@@ -275,6 +282,9 @@ export async function PATCH(request: Request) {
 
 /** DELETE ?id= … リンク失効（公開ページが即座に見られなくなる） */
 export async function DELETE(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

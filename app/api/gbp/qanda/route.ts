@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getAccessToken } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * Google Q&A API
@@ -67,6 +68,9 @@ export async function GET(request: Request) {
  * Body: { questionName: "...", text: "..." }
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

@@ -4,6 +4,7 @@ import { scheduledPosts, stores } from "@/lib/db/schema"
 import { getAccessToken } from "@/lib/get-session"
 import { eq, sql, and, inArray } from "drizzle-orm"
 import { errorResponse } from "@/lib/api-helpers"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * GET /api/scheduled-posts
@@ -91,6 +92,9 @@ export async function GET(request: Request) {
  * }
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
@@ -165,6 +169,9 @@ export async function POST(request: Request) {
  * DELETE /api/scheduled-posts?id=N
  */
 export async function DELETE(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

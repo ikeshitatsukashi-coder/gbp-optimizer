@@ -3,6 +3,7 @@ import { getAccessToken } from "@/lib/get-session"
 import { syncReviewsForActiveStores } from "@/lib/services/reviews-sync"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * POST /api/reviews/sync
@@ -12,6 +13,9 @@ import { checkRateLimit, getClientId } from "@/lib/rate-limit"
  * 並列度5で 471店舗 ≒ 2-3分
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`reviews-sync:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 2,

@@ -1,6 +1,7 @@
 import { getAccessToken } from "@/lib/get-session"
 import { createGbpClient } from "@/lib/gbp-client"
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole } from "@/lib/services/authz"
 
 export async function GET(request: NextRequest) {
   
@@ -41,6 +42,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   
   
   const accessToken = await getAccessToken()

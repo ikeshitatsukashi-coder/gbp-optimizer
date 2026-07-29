@@ -8,6 +8,7 @@ import {
   type ColumnMapping,
 } from "@/lib/services/import-scheduled-rows"
 import * as XLSX from "xlsx"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * POST /api/scheduled-posts/import
@@ -17,6 +18,9 @@ import * as XLSX from "xlsx"
  * 実行はしない — 全て status='pending' の予約として登録する。
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

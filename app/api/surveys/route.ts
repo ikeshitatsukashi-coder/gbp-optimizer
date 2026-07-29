@@ -5,6 +5,7 @@ import { eq, sql, desc } from "drizzle-orm"
 import { getAccessToken, getSessionEmail } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
 import { generatePublicToken } from "@/lib/public-link"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * アンケート定義の CRUD（社内・セッション認証）
@@ -66,6 +67,9 @@ function validateQuestions(questions: unknown): questions is SurveyQuestion[] {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   if (!(await requireAuth())) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
@@ -120,6 +124,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   if (!(await requireAuth())) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
@@ -215,6 +222,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   if (!(await requireAuth())) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }

@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm"
 import { getAccessToken } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { requireRole } from "@/lib/services/authz"
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -30,6 +31,9 @@ const INDUSTRY_LABELS_JP: Record<string, string> = {
  * 内容を確認・編集してから保存する。
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`gen-desc:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 20,

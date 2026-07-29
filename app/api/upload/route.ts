@@ -3,6 +3,7 @@ import { put, list, del } from "@vercel/blob"
 import { getAccessToken } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * POST /api/upload  (multipart/form-data: file)
@@ -12,6 +13,9 @@ import { checkRateLimit, getClientId } from "@/lib/rate-limit"
  * Google の投稿 API は公開 URL からしか画像を取得できないため、この保管層が必要。
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`upload:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 60,
@@ -117,6 +121,9 @@ export async function GET() {
  * ※予約中・投稿済みの投稿が参照している画像を消すと表示できなくなるため、UI側で注意喚起
  */
 export async function DELETE(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
   if (!accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

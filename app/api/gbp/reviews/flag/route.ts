@@ -1,11 +1,15 @@
 import { getAccessToken } from "@/lib/get-session"
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * Flag a review for removal via Google My Business API
  * This submits a "report" request to Google for policy violation review
  */
 export async function POST(request: NextRequest) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const accessToken = await getAccessToken()
 
   if (!accessToken) {

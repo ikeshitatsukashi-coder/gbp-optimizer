@@ -4,6 +4,7 @@ import { socialConnections } from "@/lib/db/schema"
 import { and, eq } from "drizzle-orm"
 import { getAccessToken, getSessionEmail } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * 店舗ごとの外部サービス連携（SNS等）
@@ -57,6 +58,9 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ locationId: string }> }
 ) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const token = await getAccessToken()
   if (!token) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
 
@@ -139,6 +143,9 @@ export async function POST(
 }
 
 export async function DELETE(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const token = await getAccessToken()
   if (!token) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   const id = parseInt(new URL(request.url).searchParams.get("id") ?? "", 10)

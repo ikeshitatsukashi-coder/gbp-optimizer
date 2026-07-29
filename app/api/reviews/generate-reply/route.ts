@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm"
 import { generateReviewReply } from "@/lib/services/generate-review-reply"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * POST /api/reviews/generate-reply
@@ -15,6 +16,9 @@ import { checkRateLimit, getClientId } from "@/lib/rate-limit"
  * レビュー本文は DB の reviews_archive から自動取得。
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`gen-reply:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 60,

@@ -472,9 +472,11 @@ export default function ReviewsPage() {
                         </span>
                       </td>
 
-                      {/* WF承認（ワークフロー機能は未導入） */}
+                      {/* WF承認（現在の承認対象は予約投稿のみ。返信は即時反映） */}
                       <td className="px-3 py-2.5 text-xs text-gray-400 whitespace-nowrap">
-                        WFなし
+                        <span title="ワークフロー承認の対象は予約投稿です。クチコミ返信は承認なしで反映されます。">
+                          —
+                        </span>
                       </td>
                     </tr>
 

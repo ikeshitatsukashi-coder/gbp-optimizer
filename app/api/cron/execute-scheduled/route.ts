@@ -5,6 +5,7 @@ import { createGmbClient } from "@/lib/gbp-client"
 import { and, eq, lte, sql } from "drizzle-orm"
 import { getAccessToken } from "@/lib/get-session"
 import { getServiceAccessToken } from "@/lib/services/cron-auth"
+import { filterApprovedForExecution } from "@/lib/services/approvals"
 
 /** 投稿実行に時間がかかるため延長（1回最大20件） */
 export const maxDuration = 60
@@ -122,13 +123,16 @@ async function runExecution(accessToken: string) {
     )
     .limit(20) // 60秒制限内に収める（残りは次回実行で処理）
 
+  // ワークフロー承認がONの場合、未承認の投稿は実行せず pending のまま残す
+  const { allowed, blocked } = await filterApprovedForExecution(rows)
+
   const results: Array<{
     id: number
     status: "posted" | "failed"
     error?: string
   }> = []
 
-  for (const post of rows) {
+  for (const post of allowed) {
     const r = await executeOne(accessToken, {
       id: post.id,
       locationName: post.locationName,
@@ -169,6 +173,8 @@ async function runExecution(accessToken: string) {
     processed: results.length,
     posted: results.filter((r) => r.status === "posted").length,
     failed: results.filter((r) => r.status === "failed").length,
+    /** 承認待ちのため実行しなかった件数 */
+    awaitingApproval: blocked.length,
     results,
   })
 }

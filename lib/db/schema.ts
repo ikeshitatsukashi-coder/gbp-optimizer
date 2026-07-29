@@ -341,6 +341,71 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
+/* -------------------------------------------------------------------------- */
+/*                     ユーザー権限 / ワークフロー承認                           */
+/* -------------------------------------------------------------------------- */
+
+/** 権限ロール */
+export const userRoleEnum = pgEnum("user_role", [
+  "admin", // 全権（ユーザー管理・ワークフロー設定・APIキー・削除申請）
+  "editor", // 投稿・返信などの通常運用
+  "viewer", // 閲覧のみ
+])
+
+/**
+ * 利用者マスタ
+ * ログインは従来どおり li-go.jp ドメインで許可し、ここで役割を管理する。
+ * 未登録ユーザーは既定ロール（editor）として扱い、初回ログイン時に登録される。
+ */
+export const appUsers = pgTable("app_users", {
+  email: varchar("email", { length: 200 }).primaryKey(),
+  displayName: text("display_name"),
+  role: userRoleEnum("role").notNull().default("editor"),
+  /** 無効化するとログインしても操作できない */
+  disabled: boolean("disabled").notNull().default(false),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+export type AppUser = typeof appUsers.$inferSelect
+
+/** 承認ステータス */
+export const approvalStatusEnum = pgEnum("approval_status", [
+  "pending", // 申請中
+  "approved", // 承認済み
+  "rejected", // 差し戻し
+])
+
+/**
+ * ワークフロー承認申請
+ * 現状の対象は予約投稿（scheduled_post）。承認されるまで自動実行の対象外になる。
+ */
+export const approvalRequests = pgTable(
+  "approval_requests",
+  {
+    id: serial("id").primaryKey(),
+    /** 対象種別: scheduled_post */
+    targetType: varchar("target_type", { length: 30 }).notNull(),
+    targetId: integer("target_id").notNull(),
+    /** 一覧表示用のスナップショット */
+    summary: text("summary"),
+    locationName: varchar("location_name", { length: 200 }),
+    status: approvalStatusEnum("status").notNull().default("pending"),
+    requestedBy: text("requested_by"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    comment: text("comment"),
+  },
+  (table) => [
+    index("approval_requests_status_idx").on(table.status),
+    index("approval_requests_target_idx").on(table.targetType, table.targetId),
+  ]
+)
+
+export type ApprovalRequest = typeof approvalRequests.$inferSelect
+
 /**
  * 外部サービス連携（SNS等）
  * provider ごとに1店舗あたり複数アカウントを持てる。

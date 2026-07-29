@@ -6,6 +6,7 @@ import { apiKeys } from "@/lib/db/schema"
 import { desc, eq } from "drizzle-orm"
 import { generateApiKey } from "@/lib/services/api-key-auth"
 import { errorResponse } from "@/lib/api-helpers"
+import { requireRole } from "@/lib/services/authz"
 
 /** 管理画面用（セッション認証）。キー本体は作成時に一度だけ返す。 */
 
@@ -36,6 +37,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = await requireRole("admin")
+  if (denied) return denied
+
   const session = await getServerSession(authOptions)
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
@@ -72,6 +76,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = await requireRole("admin")
+  if (denied) return denied
+
   const session = await getServerSession(authOptions)
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

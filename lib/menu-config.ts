@@ -75,8 +75,16 @@ export const menuConfig: MenuGroup[] = [
     href: "/scheduled-posts",
   },
   {
-    label: "API連携",
-    icon: "KeyRound",
-    href: "/settings/api-keys",
+    label: "ワークフロー承認",
+    icon: "ClipboardCheck",
+    href: "/workflow",
+  },
+  {
+    label: "管理設定",
+    icon: "Settings",
+    children: [
+      { label: "利用者・権限管理", href: "/settings/users" },
+      { label: "API連携", href: "/settings/api-keys" },
+    ],
   },
 ]

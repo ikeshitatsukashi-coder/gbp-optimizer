@@ -5,9 +5,13 @@ import { eq } from "drizzle-orm"
 import { getAccessToken, getSessionEmail } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
 import { generatePublicToken } from "@/lib/public-link"
+import { requireRole } from "@/lib/services/authz"
 
 /** アンケートの複製（回答済みで編集できないアンケートの改訂用） */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const token = await getAccessToken()
   if (!token) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })

@@ -16,6 +16,14 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 export async function getSessionEmail(): Promise<string | null> {
+  // getAccessToken と同じ二重ガードのローカルデバッグ用バイパス。
+  // これがないと権限チェック（authz）がローカルで常に未認証になる。
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.DEV_AUTH_BYPASS === "1"
+  ) {
+    return process.env.DEV_AUTH_EMAIL || "dev@li-go.jp"
+  }
   const session = await getServerSession(authOptions)
   return session?.user?.email ?? null
 }

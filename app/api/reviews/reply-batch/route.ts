@@ -6,6 +6,7 @@ import { reviewsArchive } from "@/lib/db/schema"
 import { eq, sql } from "drizzle-orm"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { requireRole } from "@/lib/services/authz"
 
 export interface ReplyItem {
   reviewName: string
@@ -26,6 +27,9 @@ interface ReplyResult {
  * 各成功時は reviews_archive の reply_comment を即時更新（次回 sync を待たない）。
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`reply-batch:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 10,

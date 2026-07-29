@@ -6,6 +6,7 @@ import {
   getCronAuthStatus,
   deleteCronRefreshToken,
 } from "@/lib/services/cron-auth"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * 予約投稿の自動実行セットアップ。
@@ -28,6 +29,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = await requireRole("admin")
+  if (denied) return denied
+
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
 
@@ -51,6 +55,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const denied = await requireRole("admin")
+  if (denied) return denied
+
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   try {

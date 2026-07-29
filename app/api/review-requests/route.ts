@@ -6,6 +6,7 @@ import { getAccessToken, getSessionEmail } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
 import { googleReviewUrl, locationIdOf } from "@/lib/public-link"
 import { isMailConfigured, sendReviewRequestMail, type SendResult } from "@/lib/services/mailer"
+import { requireRole } from "@/lib/services/authz"
 
 /** メール送信に時間がかかるため延長（最大50件/回） */
 export const maxDuration = 60
@@ -56,6 +57,9 @@ interface Recipient {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const token = await getAccessToken()
   if (!token) return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
 

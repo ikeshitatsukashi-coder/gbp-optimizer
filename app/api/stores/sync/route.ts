@@ -3,6 +3,7 @@ import { getAccessToken } from "@/lib/get-session"
 import { syncAllStores } from "@/lib/services/store-sync"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { requireRole } from "@/lib/services/authz"
 
 /**
  * POST /api/stores/sync
@@ -13,6 +14,9 @@ import { checkRateLimit, getClientId } from "@/lib/rate-limit"
  * 434店舗で 30〜60秒程度かかる想定。
  */
 export async function POST(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`stores-sync:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 3, // 1分間に3回まで

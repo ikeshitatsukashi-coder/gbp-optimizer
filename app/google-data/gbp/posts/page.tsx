@@ -62,7 +62,7 @@ interface UnifiedRow {
   repeat: string
   nextRepeat: string | null
   status: string
-  wfApproval: string
+  wfApproval: "none" | "pending" | "approved" | "rejected" | "na"
   summary: string
   cta: { actionType?: string; url?: string } | null
   searchUrl?: string
@@ -306,6 +306,54 @@ export default function PostsPage() {
     if (res.ok) setPublished(Array.isArray(j.localPosts) ? j.localPosts : [])
   }, [locationName])
 
+  /** ワークフロー承認の状態（予約投稿ID → 状態） */
+  const [approvalStates, setApprovalStates] = useState<
+    Record<number, "pending" | "approved" | "rejected">
+  >({})
+  const [workflowRequired, setWorkflowRequired] = useState(false)
+
+  const loadApprovals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/approvals")
+      const j = await res.json()
+      if (!res.ok) return
+      const map: Record<number, "pending" | "approved" | "rejected"> = {}
+      for (const r of j.requests as Array<{
+        targetType: string
+        targetId: number
+        status: "pending" | "approved" | "rejected"
+      }>) {
+        if (r.targetType === "scheduled_post") map[r.targetId] = r.status
+      }
+      setApprovalStates(map)
+      setWorkflowRequired(Boolean(j.workflowRequired))
+    } catch {
+      /* 承認情報が取れなくても投稿一覧の表示は続ける */
+    }
+  }, [])
+
+  /** 承認申請を出す */
+  const [requestingId, setRequestingId] = useState<number | null>(null)
+  const requestApproval = async (postId: number) => {
+    setRequestingId(postId)
+    setError(null)
+    try {
+      const res = await fetch("/api/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request", postId }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
+      setSuccess("承認申請を出しました（ワークフロー承認ページで承認できます）")
+      await loadApprovals()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRequestingId(null)
+    }
+  }
+
   const loadScheduled = useCallback(async () => {
     const url = locationName
       ? `/api/scheduled-posts?locationName=${encodeURIComponent(locationName)}`
@@ -319,13 +367,13 @@ export default function PostsPage() {
     setLoading(true)
     setError(null)
     try {
-      await Promise.all([loadPublished(), loadScheduled()])
+      await Promise.all([loadPublished(), loadScheduled(), loadApprovals()])
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
-  }, [loadPublished, loadScheduled])
+  }, [loadPublished, loadScheduled, loadApprovals])
 
   useEffect(() => {
     loadAll()
@@ -385,7 +433,7 @@ export default function PostsPage() {
       repeat: "—",
       nextRepeat: null,
       status: post.state ?? "LIVE",
-      wfApproval: "WFなし",
+      wfApproval: "na",
       summary: post.summary ?? "",
       cta: post.callToAction ?? null,
       searchUrl: post.searchUrl,
@@ -405,7 +453,7 @@ export default function PostsPage() {
       repeat: "—",
       nextRepeat: null,
       status: sp.status,
-      wfApproval: "WFなし",
+      wfApproval: approvalStates[sp.id] ?? "none",
       summary: sp.summary,
       cta: sp.callToAction ?? null,
       scheduledId: sp.id,
@@ -439,7 +487,7 @@ export default function PostsPage() {
             : sp.gbpState === "NOT_FOUND"
               ? "posted_missing"
               : "posted_syncing",
-        wfApproval: "WFなし",
+        wfApproval: approvalStates[sp.id] ?? "none",
         summary: sp.summary,
         cta: sp.callToAction ?? null,
         scheduledId: sp.id,
@@ -456,7 +504,7 @@ export default function PostsPage() {
       return db - da
     })
     return all.map((r, i) => ({ ...r, no: all.length - i }))
-  }, [published, scheduled, currentStoreTitle, tab])
+  }, [published, scheduled, currentStoreTitle, tab, approvalStates])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -802,6 +850,18 @@ export default function PostsPage() {
         </select>
       </div>
 
+      {/* 承認必須がONのときの注意書き */}
+      {workflowRequired && tab === "queued" && (
+        <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          ワークフロー承認が<strong>ON</strong>です。「WF承認」列が
+          <strong>承認済み</strong>になっていない予約投稿は、予約時刻が来ても投稿されません。
+          <a href="/workflow" className="underline ml-1">
+            ワークフロー承認ページ
+          </a>
+          で承認してください。
+        </div>
+      )}
+
       {/* Bulk-op row（投稿待ちタブのみ操作可能） */}
       {tab === "queued" && (
         <div className="flex items-center gap-2 mb-2">
@@ -870,7 +930,7 @@ export default function PostsPage() {
                 <th className="text-left px-2 font-normal whitespace-nowrap">媒体</th>
                 <th className="text-left px-2 font-normal whitespace-nowrap">繰り返し</th>
                 <th className="text-left px-2 font-normal">ステータス</th>
-                <th className="text-left px-2 font-normal">WF承認</th>
+                <th className="text-left px-2 font-normal whitespace-nowrap min-w-[86px]">WF承認</th>
                 <th className="text-left px-2 font-normal">複製</th>
                 <th className="text-left px-2 font-normal w-10">詳細</th>
               </tr>
@@ -937,7 +997,34 @@ export default function PostsPage() {
                   >
                     {STATUS_LABELS[r.status] ?? r.status}
                   </td>
-                  <td className="px-2 text-gray-500">{r.wfApproval}</td>
+                  <td className="px-2 whitespace-nowrap">
+                    {r.wfApproval === "na" ? (
+                      <span className="text-gray-400">—</span>
+                    ) : r.wfApproval === "approved" ? (
+                      <span className="inline-block whitespace-nowrap rounded border border-green-200 bg-green-100 px-1.5 py-0.5 text-[11px] text-green-700">
+                        承認済み
+                      </span>
+                    ) : r.wfApproval === "pending" ? (
+                      <span className="inline-block whitespace-nowrap rounded border border-amber-200 bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800">
+                        承認待ち
+                      </span>
+                    ) : r.wfApproval === "rejected" ? (
+                      <span className="inline-block whitespace-nowrap rounded border border-red-200 bg-red-100 px-1.5 py-0.5 text-[11px] text-red-700">
+                        差し戻し
+                      </span>
+                    ) : r.scheduledId && r.status === "pending" ? (
+                      <button
+                        type="button"
+                        disabled={requestingId === r.scheduledId}
+                        onClick={() => requestApproval(r.scheduledId!)}
+                        className="whitespace-nowrap rounded border border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {requestingId === r.scheduledId ? "申請中…" : "承認申請"}
+                      </button>
+                    ) : (
+                      <span className="text-gray-400">WFなし</span>
+                    )}
+                  </td>
                   <td className="px-2">
                     <button
                       onClick={() => openDuplicate(r)}

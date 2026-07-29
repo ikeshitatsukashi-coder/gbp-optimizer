@@ -5,6 +5,7 @@ import { getAccessToken } from "@/lib/get-session"
 import { eq } from "drizzle-orm"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
 import { errorResponse } from "@/lib/api-helpers"
+import { requireRole } from "@/lib/services/authz"
 
 const VALID_STATUS = new Set(["active", "paused", "archived"])
 const VALID_INDUSTRY = new Set([
@@ -64,6 +65,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ locationId: string }> }
 ) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
   const rl = checkRateLimit(`stores-update:${getClientId(request)}`, {
     windowMs: 60_000,
     max: 120,
