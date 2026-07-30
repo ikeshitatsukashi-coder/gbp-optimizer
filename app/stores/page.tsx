@@ -12,6 +12,8 @@ interface SyncResult {
   locationsFetched: number
   inserted: number
   updated: number
+  unverified?: number
+  duplicates?: number
   errors: { accountName: string; error: string }[]
   durationMs: number
 }
@@ -59,6 +61,14 @@ export default function StoresPage() {
 
   // フィルタ
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  /** 取り込み範囲（既定は運用対象のみ = GMOと同じ扱い） */
+  const [scopeFilter, setScopeFilter] = useState<string>("operational")
+  const [breakdown, setBreakdown] = useState({
+    all: 0,
+    operational: 0,
+    unverified: 0,
+    duplicate: 0,
+  })
   const [industryFilter, setIndustryFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState<string>("")
 
@@ -68,24 +78,37 @@ export default function StoresPage() {
     try {
       const params = new URLSearchParams()
       if (statusFilter !== "all") params.set("status", statusFilter)
+      if (scopeFilter !== "all") params.set("scope", scopeFilter)
       if (industryFilter !== "all") params.set("industry", industryFilter)
       if (searchQuery.trim()) params.set("q", searchQuery.trim())
       params.set("limit", "1000")
+      params.set("breakdown", "1")
 
-      const res = await fetch(`/api/stores?${params.toString()}`)
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        throw new Error(j.error || `HTTP ${res.status}`)
+      // DB接続が稀に10秒でタイムアウトするため、1度だけ静かに再試行する
+      const request = async () => {
+        const res = await fetch(`/api/stores?${params.toString()}`)
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(j.error || `HTTP ${res.status}`)
+        }
+        return res.json()
       }
-      const data = await res.json()
+      let data
+      try {
+        data = await request()
+      } catch {
+        await new Promise((r) => setTimeout(r, 600))
+        data = await request()
+      }
       setStores(data.stores)
       setTotal(data.total)
+      if (data.breakdown) setBreakdown(data.breakdown)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, industryFilter, searchQuery])
+  }, [statusFilter, scopeFilter, industryFilter, searchQuery])
 
   useEffect(() => {
     fetchStores()
@@ -176,6 +199,13 @@ export default function StoresPage() {
             {lastSyncResult.errors.length > 0 && (
               <>, エラー {lastSyncResult.errors.length} 件</>
             )}
+            {(lastSyncResult.unverified || lastSyncResult.duplicates) ? (
+              <>
+                <br />
+                うち運用対象外: オーナー確認が必要 {lastSyncResult.unverified ?? 0} 件 / 重複リスティング{" "}
+                {lastSyncResult.duplicates ?? 0} 件（店舗セレクタ・クチコミ取得の対象から除外されます）
+              </>
+            ) : null}
           </p>
         </Card>
       )}
@@ -183,8 +213,14 @@ export default function StoresPage() {
       {/* 集計サマリー */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card className="p-4">
-          <div className="text-xs text-muted-foreground">全店舗</div>
+          <div className="text-xs text-muted-foreground">表示中の店舗</div>
           <div className="text-2xl font-bold mt-1">{total}</div>
+          {(breakdown.unverified > 0 || breakdown.duplicate > 0) && (
+            <div className="text-[11px] text-muted-foreground mt-1 leading-tight">
+              運用対象 {breakdown.operational} / 未確認 {breakdown.unverified} / 重複{" "}
+              {breakdown.duplicate}
+            </div>
+          )}
         </Card>
         <Card className="p-4">
           <div className="text-xs text-muted-foreground">運用中</div>
@@ -214,7 +250,22 @@ export default function StoresPage() {
 
       {/* フィルタ */}
       <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">
+              取り込み範囲
+            </label>
+            <select
+              value={scopeFilter}
+              onChange={(e) => setScopeFilter(e.target.value)}
+              className="w-full h-8 px-2 text-sm border rounded-md bg-background"
+            >
+              <option value="operational">運用対象のみ（{breakdown.operational}）</option>
+              <option value="unverified">オーナー確認が必要（{breakdown.unverified}）</option>
+              <option value="duplicate">重複リスティング（{breakdown.duplicate}）</option>
+              <option value="all">すべて（{breakdown.all}）</option>
+            </select>
+          </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">
               ステータス
@@ -297,6 +348,19 @@ export default function StoresPage() {
                       <div className="text-xs text-muted-foreground">
                         {s.primaryCategory ?? ""}
                       </div>
+                      {/* 運用対象から外れる理由を明示（GMOは未確認を取り込まないため差が出る） */}
+                      {s.duplicateOf ? (
+                        <span
+                          className="inline-block mt-1 rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] text-red-700"
+                          title={`本体: ${s.duplicateOf}`}
+                        >
+                          重複リスティング（対象外）
+                        </span>
+                      ) : s.hasVoiceOfMerchant === false ? (
+                        <span className="inline-block mt-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">
+                          オーナー確認が必要（対象外）
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
                       {formatAddress(s.address)}

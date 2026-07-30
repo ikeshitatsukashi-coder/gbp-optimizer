@@ -24,6 +24,10 @@ interface GoogleLocation {
   metadata?: {
     placeId?: string | null
     newReviewUri?: string | null
+    /** オーナー確認（Voice of Merchant）が取れているか */
+    hasVoiceOfMerchant?: boolean | null
+    /** 重複リスティングの場合、本体側の location 名 */
+    duplicateLocation?: string | null
   } | null
 }
 
@@ -32,6 +36,10 @@ export interface SyncResult {
   locationsFetched: number
   inserted: number
   updated: number
+  /** オーナー確認が取れていない店舗数（metadata.hasVoiceOfMerchant === false） */
+  unverified: number
+  /** 重複リスティング数（metadata.duplicateLocation あり） */
+  duplicates: number
   errors: { accountName: string; error: string }[]
   durationMs: number
 }
@@ -53,6 +61,8 @@ export async function syncAllStores(accessToken: string): Promise<SyncResult> {
     locationsFetched: 0,
     inserted: 0,
     updated: 0,
+    unverified: 0,
+    duplicates: 0,
     errors: [],
     durationMs: 0,
   }
@@ -65,6 +75,10 @@ export async function syncAllStores(accessToken: string): Promise<SyncResult> {
       const locations = (await client.listLocations(accountName)) as GoogleLocation[]
       result.accountsProcessed += 1
       result.locationsFetched += locations.length
+      for (const l of locations) {
+        if (l.metadata?.hasVoiceOfMerchant === false) result.unverified += 1
+        if (l.metadata?.duplicateLocation) result.duplicates += 1
+      }
 
       // バッチで UPSERT（PostgresのON CONFLICTを使用）
       // 1件ずつだと434店舗で遅いので、bulk insert with ON CONFLICT DO UPDATE
@@ -81,6 +95,13 @@ export async function syncAllStores(accessToken: string): Promise<SyncResult> {
           primaryCategory: l.categories?.primaryCategory?.displayName ?? null,
           placeId: l.metadata?.placeId ?? null,
           newReviewUri: l.metadata?.newReviewUri ?? null,
+          // オーナー確認・重複の判定材料。Google が返さなかった場合は null（=不明）にして
+          // 「未確認」と決めつけない（誤って全店舗が対象外になるのを防ぐ）
+          hasVoiceOfMerchant:
+            typeof l.metadata?.hasVoiceOfMerchant === "boolean"
+              ? l.metadata.hasVoiceOfMerchant
+              : null,
+          duplicateOf: l.metadata?.duplicateLocation ?? null,
           lastSyncedAt: new Date(),
           // status/industry/autoReply/autoFlag は default を使う（新規時のみ）
         }))
@@ -100,6 +121,8 @@ export async function syncAllStores(accessToken: string): Promise<SyncResult> {
             primaryCategory: sql`excluded.primary_category`,
             placeId: sql`excluded.place_id`,
             newReviewUri: sql`excluded.new_review_uri`,
+            hasVoiceOfMerchant: sql`excluded.has_voice_of_merchant`,
+            duplicateOf: sql`excluded.duplicate_of`,
             lastSyncedAt: sql`excluded.last_synced_at`,
             updatedAt: sql`now()`,
             // status / industry / auto_reply_enabled / auto_flag_enabled / parent_company / notes は据え置き

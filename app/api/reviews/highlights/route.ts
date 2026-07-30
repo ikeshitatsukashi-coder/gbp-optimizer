@@ -37,6 +37,8 @@ export async function GET(request: Request) {
                r.reviewer, r.star_rating, r.comment, r.create_time, r.reply_comment
         FROM reviews_archive r
         INNER JOIN stores s ON s.location_name = r.location_name
+        AND (s.has_voice_of_merchant IS NULL OR s.has_voice_of_merchant = true)
+        AND s.duplicate_of IS NULL
         WHERE ${baseWhere}
           AND r.star_rating = 5
           AND r.comment IS NOT NULL
@@ -49,6 +51,8 @@ export async function GET(request: Request) {
                r.reviewer, r.star_rating, r.comment, r.create_time, r.reply_comment
         FROM reviews_archive r
         INNER JOIN stores s ON s.location_name = r.location_name
+        AND (s.has_voice_of_merchant IS NULL OR s.has_voice_of_merchant = true)
+        AND s.duplicate_of IS NULL
         WHERE ${baseWhere}
           AND r.star_rating <= 2
           AND r.comment IS NOT NULL
@@ -61,6 +65,8 @@ export async function GET(request: Request) {
                r.reviewer, r.star_rating, r.comment, r.create_time, r.reply_comment
         FROM reviews_archive r
         INNER JOIN stores s ON s.location_name = r.location_name
+        AND (s.has_voice_of_merchant IS NULL OR s.has_voice_of_merchant = true)
+        AND s.duplicate_of IS NULL
         WHERE ${baseWhere}
           AND (r.reply_comment IS NULL OR length(trim(r.reply_comment)) = 0)
           AND r.comment IS NOT NULL

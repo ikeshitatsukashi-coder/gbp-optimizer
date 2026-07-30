@@ -41,6 +41,8 @@ export async function GET(request: Request) {
         r.create_time
       FROM reviews_archive r
       INNER JOIN stores s ON s.location_name = r.location_name
+        AND (s.has_voice_of_merchant IS NULL OR s.has_voice_of_merchant = true)
+        AND s.duplicate_of IS NULL
       WHERE s.status = 'active'
         AND s.auto_reply_enabled = true
         AND r.archive_reason = 'current'

@@ -44,6 +44,8 @@ export async function GET(request: Request) {
         ) AS last_flag
       FROM reviews_archive r
       INNER JOIN stores s ON s.location_name = r.location_name
+        AND (s.has_voice_of_merchant IS NULL OR s.has_voice_of_merchant = true)
+        AND s.duplicate_of IS NULL
       WHERE r.archive_reason = 'deleted'
         ${storeFilter ? sql`AND s.title ILIKE ${"%" + storeFilter + "%"}` : sql``}
       ORDER BY r.deleted_detected_at DESC NULLS LAST

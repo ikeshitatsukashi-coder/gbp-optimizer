@@ -2,6 +2,7 @@ import { db } from "@/lib/db"
 import { reviewsArchive, stores, type NewReviewArchive } from "@/lib/db/schema"
 import { createGmbClient } from "@/lib/gbp-client"
 import { and, eq, inArray, isNull, notInArray, sql } from "drizzle-orm"
+import { operationalOnly } from "@/lib/store-scope"
 
 interface GoogleReview {
   name?: string | null
@@ -198,7 +199,8 @@ export async function syncReviewsForActiveStores(
   }
 
   // 対象店舗を取得
-  const conditions = [eq(stores.status, "active" as const)]
+  // オーナー確認が必要な店舗・重複リスティングは取り込まない（同じ会社のデータが二重になるため）
+  const conditions = [eq(stores.status, "active" as const), operationalOnly()!]
   const targets = options?.locationNames?.length
     ? await db
         .select({ locationName: stores.locationName, accountName: stores.accountName })

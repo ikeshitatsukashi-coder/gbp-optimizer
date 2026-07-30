@@ -44,6 +44,8 @@ export async function GET(request: Request) {
         ) AS current_archive_reason
       FROM flag_history f
       INNER JOIN stores s ON s.location_name = f.location_name
+        AND (s.has_voice_of_merchant IS NULL OR s.has_voice_of_merchant = true)
+        AND s.duplicate_of IS NULL
       WHERE 1=1
         ${storeFilter ? sql`AND s.title ILIKE ${"%" + storeFilter + "%"}` : sql``}
         ${status ? sql`AND f.status::text = ${status}` : sql``}

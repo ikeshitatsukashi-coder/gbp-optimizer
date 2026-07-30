@@ -92,6 +92,17 @@ export const stores = pgTable(
     placeId: varchar("place_id", { length: 120 }),
     /** Google公式のクチコミ投稿URL（metadata.newReviewUri） */
     newReviewUri: text("new_review_uri"),
+    /**
+     * オーナー確認（Voice of Merchant）の状態。metadata.hasVoiceOfMerchant。
+     * false = 「オーナー確認が必要」。null = 未同期でまだ分からない。
+     * null を「未確認」と混同すると全店舗が消えるため、判定時は false のみを除外する。
+     */
+    hasVoiceOfMerchant: boolean("has_voice_of_merchant"),
+    /**
+     * 重複リスティングの場合、本体側の location 名。metadata.duplicateLocation。
+     * 値が入っている＝この店舗は重複側なので運用対象から外す。
+     */
+    duplicateOf: varchar("duplicate_of", { length: 200 }),
     /** クチコミ投稿通知を送るメールアドレス（未設定なら通知しない） */
     notifyEmail: text("notify_email"),
     /** この語を含む新着クチコミのみ通知（空なら全件通知） */
@@ -107,6 +118,7 @@ export const stores = pgTable(
     index("stores_status_idx").on(table.status),
     index("stores_industry_idx").on(table.industry),
     index("stores_parent_company_idx").on(table.parentCompany),
+    index("stores_vom_idx").on(table.hasVoiceOfMerchant),
   ]
 )
 

@@ -87,7 +87,7 @@ export function GbpProvider({ children }: { children: React.ReactNode }) {
       //    Google API を毎回叩くと478店舗のページングで数十秒かかり
       //    タイムアウトして「店舗なし」になるため。
       try {
-        const dbRes = await fetch("/api/stores?status=active&limit=2000")
+        const dbRes = await fetch("/api/stores?status=active&scope=operational&limit=2000")
         if (dbRes.ok) {
           const dbData = await dbRes.json()
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
