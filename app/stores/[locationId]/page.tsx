@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Info,
 } from "lucide-react"
+import { fetchJsonRetry } from "@/lib/fetch-json"
 
 /* -------------------------------------------------------------------------- */
 /*  店舗詳細 — 基本情報 / SNS・外部連携 / 通知設定                              */
@@ -141,7 +142,13 @@ export default function StoreDetailPage() {
   const router = useRouter()
   const [store, setStore] = useState<Store | null>(null)
   const [connections, setConnections] = useState<Connection[]>([])
-  const [tab, setTab] = useState<"basic" | "social" | "notify">("basic")
+  // ヘッダーの店舗メニューから ?tab=social / ?tab=notify で直接開けるようにする
+  const searchParams = useSearchParams()
+  const initialTab = (() => {
+    const t = searchParams.get("tab")
+    return t === "social" || t === "notify" ? t : "basic"
+  })()
+  const [tab, setTab] = useState<"basic" | "social" | "notify">(initialTab)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -163,13 +170,17 @@ export default function StoreDetailPage() {
     setLoading(true)
     setError(null)
     try {
+      // DBが休止から復帰する直後は初回クエリだけタイムアウトすることがあるため再試行つきで取得
       const [sRes, cRes] = await Promise.all([
-        fetch(`/api/stores/${params.locationId}`),
-        fetch(`/api/stores/${params.locationId}/connections`),
+        fetchJsonRetry<{ store: Store }>(`/api/stores/${params.locationId}`),
+        fetchJsonRetry<{ connections: Connection[] }>(
+          `/api/stores/${params.locationId}/connections`
+        ),
       ])
-      const sj = await sRes.json()
-      if (!sRes.ok) throw new Error(sj.error || `HTTP ${sRes.status}`)
-      const s: Store = sj.store
+      if (!sRes.ok || !sRes.data?.store) {
+        throw new Error(sRes.error || `HTTP ${sRes.status}`)
+      }
+      const s: Store = sRes.data.store
       setStore(s)
       setForm({
         status: s.status,
@@ -182,8 +193,7 @@ export default function StoreDetailPage() {
         autoFlagEnabled: s.autoFlagEnabled,
       })
       if (cRes.ok) {
-        const cj = await cRes.json()
-        setConnections(cj.connections ?? [])
+        setConnections(cRes.data?.connections ?? [])
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

@@ -68,3 +68,32 @@ export async function fetchJson<T = Record<string, unknown>>(
 
   return { ok: false, status: res.status, data, error: friendly }
 }
+
+/**
+ * DBのコールドスタート対策つき GET。
+ *
+ * Neon は一定時間アクセスがないとコンピュートが休止するため、
+ * 復帰直後の最初のクエリだけ 10 秒前後でタイムアウトして 500 になることがある
+ * （2回目以降は 1 秒未満で応答する）。ユーザーにエラーを見せる必要はないので
+ * サーバーエラー・通信エラーのときだけ静かに再試行する。
+ *
+ * 400番台（権限不足・不正なパラメータ等）は再試行しても同じなのでそのまま返す。
+ */
+export async function fetchJsonRetry<T = Record<string, unknown>>(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  options?: { retries?: number; delayMs?: number }
+): Promise<FetchJsonResult<T>> {
+  const retries = options?.retries ?? 1
+  const delayMs = options?.delayMs ?? 700
+
+  let last = await fetchJson<T>(input, init)
+  for (let i = 0; i < retries; i++) {
+    if (last.ok) return last
+    const retryable = last.status === 0 || last.status >= 500
+    if (!retryable) return last
+    await new Promise((r) => setTimeout(r, delayMs))
+    last = await fetchJson<T>(input, init)
+  }
+  return last
+}
