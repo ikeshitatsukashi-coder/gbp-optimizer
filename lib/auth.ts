@@ -58,6 +58,9 @@ export const authOptions: NextAuthOptions = {
             "https://www.googleapis.com/auth/business.manage",
             // 投稿一括取り込み用: スプレッドシートの読み取り（読み取り専用）
             "https://www.googleapis.com/auth/spreadsheets.readonly",
+            // GA4連携用: アナリティクスの読み取り（読み取り専用）
+            // ※スコープを追加したため、既存ユーザーは次回ログイン時に同意画面が再表示される
+            "https://www.googleapis.com/auth/analytics.readonly",
           ].join(" "),
           access_type: "offline",
           prompt: "consent",

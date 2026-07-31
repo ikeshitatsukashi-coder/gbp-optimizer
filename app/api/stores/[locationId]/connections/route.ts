@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { socialConnections } from "@/lib/db/schema"
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { getAccessToken, getSessionEmail } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
 import { requireRole } from "@/lib/services/authz"
+import { encryptToken, hasEncryptionKey } from "@/lib/crypto"
 
 /**
  * 店舗ごとの外部サービス連携（SNS等）
@@ -44,6 +45,8 @@ export async function GET(
         errorMessage: socialConnections.errorMessage,
         createdAt: socialConnections.createdAt,
         tokenExpiresAt: socialConnections.tokenExpiresAt,
+        // 値そのものは返さず、登録済みかどうかだけ画面に伝える
+        hasToken: sql<boolean>`${socialConnections.accessToken} is not null`,
       })
       .from(socialConnections)
       .where(eq(socialConnections.locationName, buildLocationName(locationId)))
@@ -89,6 +92,17 @@ export async function POST(
     )
   }
 
+  // トークンを預かる場合は暗号化鍵が無いと保存させない（平文で残らないようにする）
+  if (body.accessToken && !hasEncryptionKey()) {
+    return NextResponse.json(
+      {
+        error:
+          "トークンを保存するための暗号化鍵（TOKEN_ENCRYPTION_KEY）が設定されていません。管理者に連絡してください。",
+      },
+      { status: 500 }
+    )
+  }
+
   try {
     const email = await getSessionEmail()
 
@@ -114,7 +128,7 @@ export async function POST(
         .set({
           ...(body.accountName !== undefined ? { accountName: body.accountName } : {}),
           ...(body.externalId !== undefined ? { externalId: body.externalId } : {}),
-          ...(body.accessToken ? { accessToken: body.accessToken } : {}),
+          ...(body.accessToken ? { accessToken: encryptToken(body.accessToken) } : {}),
           ...(body.status ? { status: body.status } : {}),
           ...(body.settings !== undefined ? { settings: body.settings } : {}),
           updatedAt: new Date(),
@@ -130,7 +144,7 @@ export async function POST(
         provider: body.provider,
         accountName: body.accountName ?? null,
         externalId: body.externalId ?? null,
-        accessToken: body.accessToken ?? null,
+        accessToken: body.accessToken ? encryptToken(body.accessToken) : null,
         status: body.status ?? "pending",
         settings: body.settings ?? {},
         createdBy: email,

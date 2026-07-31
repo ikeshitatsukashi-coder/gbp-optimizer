@@ -21,6 +21,8 @@ import {
   Info,
 } from "lucide-react"
 import { fetchJsonRetry } from "@/lib/fetch-json"
+import { LinePanel } from "@/components/stores/line-panel"
+import { Ga4Panel } from "@/components/stores/ga4-panel"
 
 /* -------------------------------------------------------------------------- */
 /*  店舗詳細 — 基本情報 / SNS・外部連携 / 通知設定                              */
@@ -115,7 +117,7 @@ const PROVIDERS = [
     icon: MessageCircle,
     color: "#06c755",
     desc: "LINE公式アカウントからの配信・クーポン等に使用します。",
-    note: "LINE Messaging APIは無料で利用できます（審査不要）。",
+    note: "審査不要・無料枠ありで今すぐ使えます。登録後に「接続を確認する」を押してください。",
     fields: [
       { key: "accountName", label: "LINE公式アカウント名", placeholder: "＠kyowa" },
       { key: "externalId", label: "チャネルID", placeholder: "1234567890" },
@@ -129,7 +131,7 @@ const PROVIDERS = [
     icon: BarChart3,
     color: "#e8710a",
     desc: "サイト側の流入データをあわせて確認するために使用します。",
-    note: "GA4のプロパティIDを登録します（Googleログイン済みのため追加審査は不要）。",
+    note: "審査不要。閲覧権限のあるGoogleアカウントでログインしている必要があります（初回はログアウト→再ログインで権限の許可が必要）。",
     fields: [
       { key: "externalId", label: "GA4 プロパティID", placeholder: "properties/123456789" },
     ],
@@ -439,7 +441,7 @@ export default function StoreDetailPage() {
               <p className="font-bold mb-1">連携の進め方</p>
               Instagram・Facebook は Meta のアプリ審査（<b>4〜6週間</b>
               ）の承認が必要です。承認前でもここにアカウント情報を登録しておけば、
-              承認後すぐに転載を開始できます。LINE・GA4 は審査不要です。
+              承認後すぐに転載を開始できます。<b>LINE・GA4 は審査不要で、いま動きます。</b>
             </div>
           </Card>
 
@@ -537,8 +539,11 @@ function ConnectionCard({
           externalId: values.externalId,
           accessToken: values.accessToken,
           // 審査が必要なものは pending、不要なものは connected
+          // IG/FBは審査待ち、LINEは疎通確認が通るまで未確認として扱う
           status:
-            provider.key === "instagram" || provider.key === "facebook"
+            provider.key === "instagram" ||
+            provider.key === "facebook" ||
+            provider.key === "line"
               ? "pending"
               : "connected",
           settings: options,
@@ -616,7 +621,9 @@ function ConnectionCard({
                 {c.status === "connected"
                   ? "連携中"
                   : c.status === "pending"
-                    ? "審査待ち"
+                    ? provider.key === "line"
+                      ? "未確認"
+                      : "審査待ち"
                     : "エラー"}
               </span>
               <button
@@ -629,6 +636,20 @@ function ConnectionCard({
             </div>
           ))}
         </div>
+      )}
+
+      {/* LINE: 接続確認と配信（審査不要なのでこの場で動く） */}
+      {provider.key === "line" && connections.length > 0 && (
+        <LinePanel
+          locationId={locationId}
+          connectionId={connections[0].id}
+          onError={onError}
+        />
+      )}
+
+      {/* GA4: サイト側の数値 */}
+      {provider.key === "ga4" && connections.length > 0 && (
+        <Ga4Panel locationId={locationId} onError={onError} />
       )}
 
       {/* 追加フォーム */}

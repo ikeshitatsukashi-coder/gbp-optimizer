@@ -468,6 +468,35 @@ export const socialConnections = pgTable(
 
 export type SocialConnection = typeof socialConnections.$inferSelect
 
+/**
+ * LINE公式アカウントからの配信履歴。
+ * 友だち全員に届く操作なので、誰がいつ何を送ったかを必ず残す。
+ */
+export const lineBroadcasts = pgTable(
+  "line_broadcasts",
+  {
+    id: serial("id").primaryKey(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    connectionId: integer("connection_id"),
+    /** 送信した本文 */
+    message: text("message").notNull(),
+    /** 画像付き配信の場合の画像URL */
+    imageUrl: text("image_url"),
+    /** sent | failed */
+    status: varchar("status", { length: 20 }).notNull(),
+    errorMessage: text("error_message"),
+    /** 送信時点の友だち数（取得できた場合） */
+    followers: integer("followers"),
+    sentBy: text("sent_by"),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("line_broadcasts_location_idx").on(t.locationName, t.sentAt)]
+)
+
+export type LineBroadcast = typeof lineBroadcasts.$inferSelect
+
 /* -------------------------------------------------------------------------- */
 /*                       アンケート（クチコミ促進）                              */
 /* -------------------------------------------------------------------------- */

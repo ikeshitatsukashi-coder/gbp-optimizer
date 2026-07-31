@@ -71,6 +71,13 @@
       "when": 1785395741549,
       "tag": "0009_neat_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785461636590,
+      "tag": "0010_oval_madrox",
+      "breakpoints": true
     }
   ]
 }
