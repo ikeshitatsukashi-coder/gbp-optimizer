@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
-import { scheduledPosts, stores } from "@/lib/db/schema"
+import { companies, scheduledPosts, stores } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { normalizeSearchText } from "@/lib/search-normalize"
 
 /**
@@ -24,9 +25,16 @@ const HEADER_ALIASES: Record<string, string> = {
   店舗id: "locationName",
   ロケーションid: "locationName",
   locationid: "locationName",
+  会社id: "companyCode",
+  会社コード: "companyCode",
+  companycode: "companyCode",
+  company_code: "companyCode",
+  companyid: "companyCode",
   店舗名: "storeName",
   店舗: "storeName",
   店名: "storeName",
+  // 「会社名」はGMOのエクスポートで店舗名として使われているため storeName に寄せる
+  // （会社の特定には上の「会社ID」列を使う）
   会社名: "storeName",
   ビジネス名: "storeName",
   事業所名: "storeName",
@@ -230,8 +238,13 @@ export async function importScheduledRows(
   mapping?: ColumnMapping
 ): Promise<ImportResult> {
   const allStores = await db
-    .select({ locationName: stores.locationName, title: stores.title })
+    .select({
+      locationName: stores.locationName,
+      title: stores.title,
+      companyCode: companies.code,
+    })
     .from(stores)
+    .leftJoin(companies, eq(stores.companyId, companies.id))
   // 同名の店舗が実在する（例: 「株式会社国商運輸 伊勢崎営業所」が2件）ため、
   // 店舗名は必ず配列で持ち、1件に絞れない場合は特定せずエラーにする。
   const byTitle = new Map<string, string[]>()
@@ -241,6 +254,18 @@ export async function importScheduledRows(
     else byTitle.set(s.title, [s.locationName])
   }
   const validLocationNames = new Set(allStores.map((s) => s.locationName))
+  // 店舗 → 会社コード（画像フォルダの判定に使う）
+  const companyCodeByLocation = new Map<string, string>()
+  // 会社コード（大文字小文字を無視） → その会社の店舗
+  const storesByCompany = new Map<string, Set<string>>()
+  for (const s of allStores) {
+    if (!s.companyCode) continue
+    companyCodeByLocation.set(s.locationName, s.companyCode)
+    const k = s.companyCode.trim().toLowerCase()
+    const set = storesByCompany.get(k) ?? new Set<string>()
+    set.add(s.locationName)
+    storesByCompany.set(k, set)
+  }
   const byBareId = new Map(
     allStores.map((s) => [s.locationName.replace(/^locations\//, ""), s.locationName])
   )
@@ -260,8 +285,9 @@ export async function importScheduledRows(
    */
   const resolveLocation = (
     locRaw: unknown,
-    storeNameRaw: unknown
-  ): { locationName: string | null; ambiguous?: string[] } => {
+    storeNameRaw: unknown,
+    companyCodeRaw?: unknown
+  ): { locationName: string | null; ambiguous?: string[]; unknownCompany?: string } => {
     // 1) 店舗IDが指定されていれば最優先（同名でも確実に特定できる）
     if (typeof locRaw === "string" && locRaw.trim()) {
       const cleaned = locRaw.trim()
@@ -272,21 +298,37 @@ export async function importScheduledRows(
       const bare = cleaned.replace(/^locations\//, "")
       if (byBareId.has(bare)) return { locationName: byBareId.get(bare)! }
     }
-    // 2) 店舗名で照合（1件に絞れたときだけ採用）
+    // 2) 会社IDが指定されていれば、候補をその会社の店舗に絞る
+    let scope: Set<string> | null = null
+    if (typeof companyCodeRaw === "string" && companyCodeRaw.trim()) {
+      const code = companyCodeRaw.trim().toLowerCase()
+      const set = storesByCompany.get(code)
+      if (!set) return { locationName: null, unknownCompany: companyCodeRaw.trim() }
+      scope = set
+    }
+    const narrow = (arr: string[]): string[] => (scope ? arr.filter((n) => scope!.has(n)) : arr)
+
+    // 3) 店舗名で照合（1件に絞れたときだけ採用）
     if (typeof storeNameRaw === "string" && storeNameRaw.trim()) {
       const name = storeNameRaw.trim()
       const exact = byTitle.get(name)
       if (exact) {
-        if (exact.length === 1) return { locationName: exact[0] }
-        return { locationName: null, ambiguous: exact }
+        const c = narrow(exact)
+        if (c.length === 1) return { locationName: c[0] }
+        if (c.length > 1) return { locationName: null, ambiguous: c }
       }
       const norm = normalizeSearchText(name)
       const hit = byNormTitle.get(norm)
       if (hit) {
-        if (hit.length === 1) return { locationName: hit[0] }
-        return { locationName: null, ambiguous: hit }
+        const c = narrow(hit)
+        if (c.length === 1) return { locationName: c[0] }
+        if (c.length > 1) return { locationName: null, ambiguous: c }
       }
+      return { locationName: null }
     }
+
+    // 4) 店舗名が無く、会社に店舗が1つだけならそれで確定できる
+    if (scope && scope.size === 1) return { locationName: [...scope][0] }
     return { locationName: null }
   }
 
@@ -349,16 +391,18 @@ export async function importScheduledRows(
     const rowIndex = idx + 2 // 1 = 見出し
     const locRaw = pickField(row, "locationName", mapping)
     const storeNameRaw = pickField(row, "storeName", mapping)
+    const companyCodeRaw = pickField(row, "companyCode", mapping)
     const summaryRaw = pickField(row, "summary", mapping)
 
     // 空行（本文も店舗も無い）はスキップ
     const isEmptyRow =
       !String(locRaw ?? "").trim() &&
       !String(storeNameRaw ?? "").trim() &&
+      !String(companyCodeRaw ?? "").trim() &&
       !String(summaryRaw ?? "").trim()
     if (isEmptyRow) return
 
-    const resolved = resolveLocation(locRaw, storeNameRaw)
+    const resolved = resolveLocation(locRaw, storeNameRaw, companyCodeRaw)
     const locationName = resolved.locationName
     if (!locationName) {
       const shown =
@@ -366,12 +410,14 @@ export async function importScheduledRows(
         (typeof locRaw === "string" && locRaw.trim()) ||
         "（店舗名・店舗ID列が空）"
       // 同名の店舗が複数ある場合は、どちらかに決め打ちせず店舗IDでの指定を促す
-      const error = resolved.ambiguous
-        ? `店舗名「${shown}」に一致する店舗が${resolved.ambiguous.length}件あるため特定できません。` +
-          `店舗ID列で指定してください（候補: ${resolved.ambiguous
-            .map((n) => n.replace(/^locations\//, ""))
-            .join(" / ")}）`
-        : `店舗が特定できません: 「${shown}」`
+      const error = resolved.unknownCompany
+        ? `会社ID「${resolved.unknownCompany}」が会社マスタにありません（管理設定→会社マスタで登録してください）`
+        : resolved.ambiguous
+          ? `店舗名「${shown}」に一致する店舗が${resolved.ambiguous.length}件あるため特定できません。` +
+            `会社ID列または店舗ID列で指定してください（候補: ${resolved.ambiguous
+              .map((n) => n.replace(/^locations\//, ""))
+              .join(" / ")}）`
+          : `店舗が特定できません: 「${shown}」`
       errors.push({ rowIndex, error, rowData: row })
       return
     }
@@ -442,10 +488,14 @@ export async function importScheduledRows(
       if (v.startsWith("http")) {
         mediaUrls = [v]
       } else {
-        // この行の店舗のフォルダ → 共通フォルダ の順に探す（他店舗は見ない）
+        // 会社フォルダ → 店舗フォルダ → 共通 の順に探す（他社のフォルダは見ない）
         const bareId = locationName.replace(/^locations\//, "")
+        const companyCode = companyCodeByLocation.get(locationName)
         const key = sanitizeName(v)
-        const hit = archiveByStore.get(bareId)?.get(key) ?? archiveShared.get(key)
+        const hit =
+          (companyCode ? archiveByStore.get(companyCode)?.get(key) : undefined) ??
+          archiveByStore.get(bareId)?.get(key) ??
+          archiveShared.get(key)
         if (hit) {
           mediaUrls = [hit]
         } else {

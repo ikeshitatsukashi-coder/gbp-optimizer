@@ -63,6 +63,35 @@ export const archiveReasonEnum = pgEnum("archive_reason", [
  * 店舗マスタ
  * Google API から取得した店舗情報に、社内独自のメタ情報（運用中フラグ・業種・トーン等）を付与
  */
+/**
+ * 会社（法人）マスタ。
+ *
+ * これまで「会社」はGoogleの店舗名の文字列の中にしか存在せず、
+ * 「株式会社国商運輸 伊勢崎営業所」と「同 豊川営業所」が同じ会社であることを
+ * システムが判断できなかった。会社を明示的なIDで持つためのテーブル。
+ *
+ * code は社内で使う会社コード。社内の既存コードがあればそれを入れ、
+ * 無い場合は C001 形式で自動採番する。
+ */
+export const companies = pgTable(
+  "companies",
+  {
+    id: serial("id").primaryKey(),
+    /** 社内で使う会社コード（例: C001）。表示・スプレッドシートでの指定に使う */
+    code: varchar("code", { length: 32 }).notNull(),
+    /** 会社の正式名称（例: 株式会社国商運輸） */
+    name: text("name").notNull(),
+    /** 自由メモ（担当者・契約状況など） */
+    notes: text("notes"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("companies_code_uq").on(t.code), index("companies_name_idx").on(t.name)]
+)
+
+export type Company = typeof companies.$inferSelect
+
 export const stores = pgTable(
   "stores",
   {
@@ -88,6 +117,14 @@ export const stores = pgTable(
     autoFlagEnabled: boolean("auto_flag_enabled").notNull().default(false),
     /** 親会社名（除外グループ用、例: 「丸進運輸株式会社」） */
     parentCompany: text("parent_company"),
+    /**
+     * 所属する会社（companies.id）。
+     * 店舗名からの自動推測では誤るため、人が画面で確定した結果のみを入れる。
+     * null = まだ会社が紐づいていない。
+     */
+    companyId: integer("company_id").references(() => companies.id, {
+      onDelete: "set null",
+    }),
     /** Google Maps Place ID（クチコミ投稿URL生成用） */
     placeId: varchar("place_id", { length: 120 }),
     /** Google公式のクチコミ投稿URL（metadata.newReviewUri） */
@@ -118,6 +155,7 @@ export const stores = pgTable(
     index("stores_status_idx").on(table.status),
     index("stores_industry_idx").on(table.industry),
     index("stores_parent_company_idx").on(table.parentCompany),
+    index("stores_company_id_idx").on(table.companyId),
     index("stores_vom_idx").on(table.hasVoiceOfMerchant),
   ]
 )

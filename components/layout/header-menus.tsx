@@ -52,6 +52,12 @@ interface MenuItem {
 
 const ADMIN_ITEMS: MenuItem[] = [
   {
+    href: "/settings/companies",
+    label: "会社マスタ",
+    desc: "店舗を会社単位でまとめる・会社IDの管理",
+    icon: Building2,
+  },
+  {
     href: "/settings/users",
     label: "利用者・権限管理",
     desc: "管理者 / 編集者 / 閲覧のみ の割り当て",

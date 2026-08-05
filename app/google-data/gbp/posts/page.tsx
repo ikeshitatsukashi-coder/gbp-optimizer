@@ -1205,6 +1205,7 @@ export default function PostsPage() {
                 <div className="space-y-2.5 mb-4">
                   {(
                     [
+                      { key: "companyCode", label: "会社ID", req: false, note: "会社マスタのコード（例 C001）。同名店舗があっても会社IDで絞り込めます" },
                       { key: "storeName", label: "店舗名", req: true, note: "または店舗ID" },
                       { key: "locationName", label: "店舗ID", req: false, note: "Google のID。GMOの店舗IDは不一致のため店舗名を推奨" },
                       { key: "scheduledFor", label: "予約日時（1列）", req: false, note: "日時が1列の場合。例 2026-07-15 10:00" },

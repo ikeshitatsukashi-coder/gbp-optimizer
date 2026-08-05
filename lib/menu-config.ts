@@ -84,6 +84,7 @@ export const menuConfig: MenuGroup[] = [
     label: "管理設定",
     icon: "Settings",
     children: [
+      { label: "会社マスタ", href: "/settings/companies" },
       { label: "利用者・権限管理", href: "/settings/users" },
       { label: "API連携", href: "/settings/api-keys" },
     ],
