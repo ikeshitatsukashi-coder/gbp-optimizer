@@ -28,6 +28,8 @@ interface ArchiveImage {
   pathname: string
   size: number
   uploadedAt: string
+  /** null = 店舗フォルダ導入前にアップロードされた共通画像 */
+  folder?: string | null
 }
 
 interface UploadingFile {
@@ -102,11 +104,17 @@ export function ImageLibraryModal({
     }
   }, [locationName])
 
+  /** locations/ を外した店舗ID（画像フォルダ名に使う） */
+  const locationId = locationName?.replace(/^locations\//, "") ?? ""
+
   const fetchArchive = useCallback(async () => {
     setArchiveLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/upload")
+      // 店舗を指定して、その店舗のフォルダの画像だけを取得する
+      // （他店舗の画像を取り違えないようにするため）
+      const q = locationId ? `?locationId=${encodeURIComponent(locationId)}` : ""
+      const res = await fetch(`/api/upload${q}`)
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
       setArchive(Array.isArray(j.images) ? j.images : [])
@@ -115,7 +123,7 @@ export function ImageLibraryModal({
     } finally {
       setArchiveLoading(false)
     }
-  }, [])
+  }, [locationId])
 
   useEffect(() => {
     if (isOpen && tab === "library") fetchMedia()
@@ -180,6 +188,8 @@ export function ImageLibraryModal({
         )
         const fd = new FormData()
         fd.append("file", new File([resized.blob], resized.fileName, { type: "image/jpeg" }))
+        // 店舗ごとのフォルダに保存するため店舗IDを一緒に送る
+        if (locationId) fd.append("locationId", locationId)
         const { ok, data, error } = await fetchJson<{ url: string }>("/api/upload", {
           method: "POST",
           body: fd,
@@ -454,6 +464,21 @@ export function ImageLibraryModal({
                   全 {archive.length} 枚
                 </span>
               </div>
+
+              {/* どの店舗のフォルダを見ているかを明示する（別会社の画像を使わないため） */}
+              <p className="text-xs text-gray-600 bg-gray-50 border rounded px-3 py-2">
+                {locationId ? (
+                  <>
+                    <b>この店舗のフォルダ</b>の画像を表示しています。アップロードした画像も
+                    この店舗のフォルダに保存され、他の店舗からは見えません。
+                  </>
+                ) : (
+                  <>
+                    店舗が選択されていないため<b>すべての画像</b>を表示しています。
+                    店舗を選んでから開くと、その店舗のフォルダだけに絞り込まれます。
+                  </>
+                )}
+              </p>
 
               {/* 一括コピー: スプレッドシートへ縦方向に貼り付ける用 */}
               <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-100 rounded px-3 py-2 flex-wrap">

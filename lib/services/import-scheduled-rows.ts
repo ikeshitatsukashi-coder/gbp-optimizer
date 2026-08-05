@@ -232,7 +232,14 @@ export async function importScheduledRows(
   const allStores = await db
     .select({ locationName: stores.locationName, title: stores.title })
     .from(stores)
-  const byTitle = new Map(allStores.map((s) => [s.title, s.locationName]))
+  // 同名の店舗が実在する（例: 「株式会社国商運輸 伊勢崎営業所」が2件）ため、
+  // 店舗名は必ず配列で持ち、1件に絞れない場合は特定せずエラーにする。
+  const byTitle = new Map<string, string[]>()
+  for (const s of allStores) {
+    const arr = byTitle.get(s.title)
+    if (arr) arr.push(s.locationName)
+    else byTitle.set(s.title, [s.locationName])
+  }
   const validLocationNames = new Set(allStores.map((s) => s.locationName))
   const byBareId = new Map(
     allStores.map((s) => [s.locationName.replace(/^locations\//, ""), s.locationName])
@@ -245,24 +252,42 @@ export async function importScheduledRows(
     else byNormTitle.set(key, [s.locationName])
   }
 
-  const resolveLocation = (locRaw: unknown, storeNameRaw: unknown): string | null => {
+  /**
+   * 行から店舗を特定する。
+   * 店舗ID列があれば必ずそれを優先し、無い場合だけ店舗名で照合する。
+   * 店舗名が複数店舗に一致する場合は「特定できた」とはみなさず候補を返す
+   * （別会社の予約投稿として登録されるのを防ぐ）。
+   */
+  const resolveLocation = (
+    locRaw: unknown,
+    storeNameRaw: unknown
+  ): { locationName: string | null; ambiguous?: string[] } => {
+    // 1) 店舗IDが指定されていれば最優先（同名でも確実に特定できる）
     if (typeof locRaw === "string" && locRaw.trim()) {
       const cleaned = locRaw.trim()
       const withPrefix = cleaned.startsWith("locations/")
         ? cleaned
         : `locations/${cleaned}`
-      if (validLocationNames.has(withPrefix)) return withPrefix
+      if (validLocationNames.has(withPrefix)) return { locationName: withPrefix }
       const bare = cleaned.replace(/^locations\//, "")
-      if (byBareId.has(bare)) return byBareId.get(bare)!
+      if (byBareId.has(bare)) return { locationName: byBareId.get(bare)! }
     }
+    // 2) 店舗名で照合（1件に絞れたときだけ採用）
     if (typeof storeNameRaw === "string" && storeNameRaw.trim()) {
       const name = storeNameRaw.trim()
-      if (byTitle.has(name)) return byTitle.get(name)!
+      const exact = byTitle.get(name)
+      if (exact) {
+        if (exact.length === 1) return { locationName: exact[0] }
+        return { locationName: null, ambiguous: exact }
+      }
       const norm = normalizeSearchText(name)
       const hit = byNormTitle.get(norm)
-      if (hit && hit.length === 1) return hit[0]
+      if (hit) {
+        if (hit.length === 1) return { locationName: hit[0] }
+        return { locationName: null, ambiguous: hit }
+      }
     }
-    return null
+    return { locationName: null }
   }
 
   // 画像アーカイブ（ファイル名 → URL）: 画像列にファイル名が入っている行がある場合のみ取得
@@ -272,19 +297,38 @@ export async function importScheduledRows(
   })
   const sanitizeName = (name: string) =>
     name.replace(/[^a-zA-Z0-9._-]/g, "_").toLowerCase()
-  const archiveIndex = new Map<string, string>()
+
+  // 画像は店舗ごとのフォルダ（post-images/<店舗ID>/）に入っている。
+  // 店舗をまたいで同じファイル名（例: gaiyou.jpg）が存在しうるため、
+  // 必ず「その行の店舗のフォルダ」だけを参照する。
+  const archiveByStore = new Map<string, Map<string, string>>()
+  // 店舗フォルダ導入前にアップロードされた画像（post-images/直下）は共通として扱う
+  const archiveShared = new Map<string, string>()
+  let archiveCount = 0
   if (needsArchive && process.env.BLOB_READ_WRITE_TOKEN) {
     try {
       const { list } = await import("@vercel/blob")
       let cursor: string | undefined
       do {
-        const page = await list({ prefix: "post-images/", limit: 500, cursor })
+        const from: string | undefined = cursor
+        const page = await list({ prefix: "post-images/", limit: 500, cursor: from })
         for (const b of page.blobs) {
-          const base = (b.pathname.split("/").pop() ?? "").replace(/^\d{13}-/, "")
-          archiveIndex.set(sanitizeName(base), b.url)
+          const rest = b.pathname.replace(/^post-images\//, "")
+          const slash = rest.indexOf("/")
+          const storeFolder = slash > 0 ? rest.slice(0, slash) : null
+          const base = (rest.split("/").pop() ?? "").replace(/^\d{13}-/, "")
+          const key = sanitizeName(base)
+          if (storeFolder) {
+            const m = archiveByStore.get(storeFolder) ?? new Map<string, string>()
+            m.set(key, b.url)
+            archiveByStore.set(storeFolder, m)
+          } else {
+            archiveShared.set(key, b.url)
+          }
+          archiveCount++
         }
         cursor = page.cursor ?? undefined
-      } while (cursor && archiveIndex.size < 2000)
+      } while (cursor && archiveCount < 2000)
     } catch {
       /* アーカイブ取得失敗時はファイル名解決なしで続行 */
     }
@@ -314,13 +358,21 @@ export async function importScheduledRows(
       !String(summaryRaw ?? "").trim()
     if (isEmptyRow) return
 
-    const locationName = resolveLocation(locRaw, storeNameRaw)
+    const resolved = resolveLocation(locRaw, storeNameRaw)
+    const locationName = resolved.locationName
     if (!locationName) {
       const shown =
         (typeof storeNameRaw === "string" && storeNameRaw.trim()) ||
         (typeof locRaw === "string" && locRaw.trim()) ||
         "（店舗名・店舗ID列が空）"
-      errors.push({ rowIndex, error: `店舗が特定できません: 「${shown}」`, rowData: row })
+      // 同名の店舗が複数ある場合は、どちらかに決め打ちせず店舗IDでの指定を促す
+      const error = resolved.ambiguous
+        ? `店舗名「${shown}」に一致する店舗が${resolved.ambiguous.length}件あるため特定できません。` +
+          `店舗ID列で指定してください（候補: ${resolved.ambiguous
+            .map((n) => n.replace(/^locations\//, ""))
+            .join(" / ")}）`
+        : `店舗が特定できません: 「${shown}」`
+      errors.push({ rowIndex, error, rowData: row })
       return
     }
 
@@ -390,13 +442,16 @@ export async function importScheduledRows(
       if (v.startsWith("http")) {
         mediaUrls = [v]
       } else {
-        const hit = archiveIndex.get(sanitizeName(v))
+        // この行の店舗のフォルダ → 共通フォルダ の順に探す（他店舗は見ない）
+        const bareId = locationName.replace(/^locations\//, "")
+        const key = sanitizeName(v)
+        const hit = archiveByStore.get(bareId)?.get(key) ?? archiveShared.get(key)
         if (hit) {
           mediaUrls = [hit]
         } else {
           errors.push({
             rowIndex,
-            error: `画像「${v}」が画像アーカイブにありません。投稿ページの「画像アーカイブ」から先にアップロードしてください（この行は取り込まれていません）`,
+            error: `画像「${v}」がこの店舗の画像フォルダにありません。投稿ページで対象の店舗を選んだ状態で「画像アーカイブ」からアップロードしてください（この行は取り込まれていません）`,
             rowData: row,
           })
           return
