@@ -1,7 +1,7 @@
 import { db } from "@/lib/db"
 import { companies, scheduledPosts, stores } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
-import { normalizeSearchText } from "@/lib/search-normalize"
+import { normalizeCoreName, normalizeSearchText } from "@/lib/search-normalize"
 
 /**
  * 予約投稿の一括インポート共通ロジック。
@@ -270,12 +270,23 @@ export async function importScheduledRows(
     allStores.map((s) => [s.locationName.replace(/^locations\//, ""), s.locationName])
   )
   const byNormTitle = new Map<string, string[]>()
+  // 法人格（株式会社・有限会社 等）の有無の違いを吸収するための索引。
+  // GBP側で「北池 運送」→「有限会社北池運送」のように改称された場合に効く。
+  const byCoreTitle = new Map<string, string[]>()
   for (const s of allStores) {
     const key = normalizeSearchText(s.title)
     const arr = byNormTitle.get(key)
     if (arr) arr.push(s.locationName)
     else byNormTitle.set(key, [s.locationName])
+
+    const core = normalizeCoreName(s.title)
+    if (core) {
+      const carr = byCoreTitle.get(core)
+      if (carr) carr.push(s.locationName)
+      else byCoreTitle.set(core, [s.locationName])
+    }
   }
+  const titleOf = new Map(allStores.map((s) => [s.locationName, s.title]))
 
   /**
    * 行から店舗を特定する。
@@ -287,7 +298,13 @@ export async function importScheduledRows(
     locRaw: unknown,
     storeNameRaw: unknown,
     companyCodeRaw?: unknown
-  ): { locationName: string | null; ambiguous?: string[]; unknownCompany?: string } => {
+  ): {
+    locationName: string | null
+    ambiguous?: string[]
+    unknownCompany?: string
+    /** 一致しなかったが名前が近い店舗（エラー文で案内する） */
+    near?: string[]
+  } => {
     // 1) 店舗IDが指定されていれば最優先（同名でも確実に特定できる）
     if (typeof locRaw === "string" && locRaw.trim()) {
       const cleaned = locRaw.trim()
@@ -324,7 +341,27 @@ export async function importScheduledRows(
         if (c.length === 1) return { locationName: c[0] }
         if (c.length > 1) return { locationName: null, ambiguous: c }
       }
-      return { locationName: null }
+      // 法人格の有無だけが違うケース（例: シート「有限会社北池運送」/ GBP「北池 運送」）
+      const core = normalizeCoreName(name)
+      const coreHit = core ? byCoreTitle.get(core) : undefined
+      if (coreHit) {
+        const c = narrow(coreHit)
+        if (c.length === 1) return { locationName: c[0] }
+        if (c.length > 1) return { locationName: null, ambiguous: c }
+      }
+      // どれにも当たらない場合は、近い店舗名を候補として返す（原因調査を助ける）
+      const near = core
+        ? allStores
+            .filter((st) => {
+              const stCore = normalizeCoreName(st.title)
+              return (
+                stCore.length > 1 && (stCore.includes(core) || core.includes(stCore))
+              )
+            })
+            .slice(0, 3)
+            .map((st) => st.locationName)
+        : []
+      return { locationName: null, near: near.length > 0 ? near : undefined }
     }
 
     // 4) 店舗名が無く、会社に店舗が1つだけならそれで確定できる
@@ -417,7 +454,11 @@ export async function importScheduledRows(
             `会社ID列または店舗ID列で指定してください（候補: ${resolved.ambiguous
               .map((n) => n.replace(/^locations\//, ""))
               .join(" / ")}）`
-          : `店舗が特定できません: 「${shown}」`
+          : resolved.near
+            ? `店舗が特定できません: 「${shown}」。似た店舗名があります → ${resolved.near
+                .map((n) => `「${titleOf.get(n) ?? n}」(ID: ${n.replace(/^locations\//, "")})`)
+                .join(" / ")}。GBP側で店舗名を変更した場合は、店舗マスタの「Googleから同期」を実行してください`
+            : `店舗が特定できません: 「${shown}」（店舗マスタに該当する店舗名がありません。GBP側で改称した場合は「Googleから同期」を実行してください）`
       errors.push({ rowIndex, error, rowData: row })
       return
     }
