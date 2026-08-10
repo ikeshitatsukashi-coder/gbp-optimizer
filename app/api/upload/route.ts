@@ -4,52 +4,13 @@ import { getAccessToken } from "@/lib/get-session"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
 import { requireRole } from "@/lib/services/authz"
-import { db } from "@/lib/db"
-import { companies, stores } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
-
-/** パスに使える値だけを許可する（想定外の値でパスを掘られないようにする） */
-function safeSegment(raw: string | null): string | null {
-  if (!raw) return null
-  const v = raw.trim().replace(/^locations\//, "")
-  return /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null
-}
-
-/**
- * 画像を入れるフォルダ名を決める。
- *
- * 会社が紐づいている店舗 → 会社コード（例: C001）
- *   同じ会社の営業所どうしでは画像を共有できるようにする。
- * 会社が未設定の店舗     → 店舗ID
- *   会社マスタの紐づけが済むまでの暫定。少なくとも別会社とは混ざらない。
- */
-async function folderFor(locationIdRaw: string | null): Promise<string | null> {
-  const bare = safeSegment(locationIdRaw)
-  if (!bare) return null
-  try {
-    const [row] = await db
-      .select({ code: companies.code })
-      .from(stores)
-      .leftJoin(companies, eq(stores.companyId, companies.id))
-      .where(eq(stores.locationName, `locations/${bare}`))
-    const code = safeSegment(row?.code ?? null)
-    if (code) return code
-  } catch {
-    /* 会社が引けない場合は店舗IDで分ける */
-  }
-  return bare
-}
-
-/**
- * blob のパスからフォルダ名を取り出す。
- * post-images/<会社コード or 店舗ID>/<ファイル名> → そのフォルダ名
- * post-images/<ファイル名>                       → null（フォルダ導入前の画像 = 共通）
- */
-function folderOfPath(pathname: string): string | null {
-  const rest = pathname.replace(/^post-images\//, "")
-  const i = rest.indexOf("/")
-  return i > 0 ? rest.slice(0, i) : null
-}
+import {
+  folderOfPath,
+  isVisibleToScope,
+  loadImageOwners,
+  ownershipLabel,
+  resolveStoreScope,
+} from "@/lib/services/image-scope"
 
 /**
  * POST /api/upload  (multipart/form-data: file, locationId)
@@ -96,7 +57,8 @@ export async function POST(request: Request) {
     const f = formData.get("file")
     if (f instanceof File) file = f
     const loc = formData.get("locationId")
-    folder = await folderFor(typeof loc === "string" ? loc : null)
+    const scope = await resolveStoreScope(typeof loc === "string" ? loc : null)
+    folder = scope.folder
   } catch {
     return NextResponse.json(
       { error: "multipart/form-data with 'file' is required" },
@@ -151,20 +113,28 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-  const wanted = await folderFor(new URL(request.url).searchParams.get("locationId"))
+  const scope = await resolveStoreScope(
+    new URL(request.url).searchParams.get("locationId")
+  )
 
   try {
+    // フォルダ導入前の画像は image_owners で持ち主を判定する
+    const owners = await loadImageOwners()
     const blobs: {
       url: string
       pathname: string
       size: number
       uploadedAt: string
-      /** null = 店舗フォルダ導入前の共通画像 */
+      /** null = フォルダ導入前の画像 */
       folder: string | null
+      /** company = 会社の画像 / store = 店舗の画像 / shared = 持ち主未設定（全社共通） */
+      ownership: "company" | "store" | "shared"
     }[] = []
     let cursor: string | undefined
     // 絞り込む場合は該当フォルダだけを取りに行く（他社のフォルダを読まない）
-    const prefixes = wanted ? [`post-images/${wanted}/`, "post-images/"] : ["post-images/"]
+    const prefixes = scope.folder
+      ? [`post-images/${scope.folder}/`, "post-images/"]
+      : ["post-images/"]
 
     for (const prefix of prefixes) {
       cursor = undefined
@@ -174,8 +144,9 @@ export async function GET(request: Request) {
         const page: ListBlobResult = await list({ prefix, limit: 500, cursor: from })
         for (const b of page.blobs) {
           const folder = folderOfPath(b.pathname)
-          // 指定時は「該当フォルダ」と「共通（フォルダなし）」のみ
-          if (wanted && folder !== wanted && folder !== null) continue
+          const owner = owners.get(b.url)
+          // 他社・他店舗の画像は返さない
+          if (!isVisibleToScope(scope, folder, owner)) continue
           if (blobs.some((x) => x.url === b.url)) continue
           blobs.push({
             url: b.url,
@@ -184,6 +155,7 @@ export async function GET(request: Request) {
             uploadedAt:
               b.uploadedAt instanceof Date ? b.uploadedAt.toISOString() : String(b.uploadedAt),
             folder,
+            ownership: ownershipLabel(folder, owner),
           })
         }
         cursor = page.cursor ?? undefined
@@ -191,7 +163,13 @@ export async function GET(request: Request) {
     }
 
     blobs.sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : -1))
-    return NextResponse.json({ images: blobs, locationId: wanted })
+    return NextResponse.json({
+      images: blobs,
+      locationId: scope.locationId,
+      companyCode: scope.companyCode,
+      /** 持ち主が未設定のまま全店舗に見えている画像の数 */
+      sharedCount: blobs.filter((b) => b.ownership === "shared").length,
+    })
   } catch (e) {
     return errorResponse("Failed to list images", e)
   }

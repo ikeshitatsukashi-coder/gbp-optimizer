@@ -28,8 +28,10 @@ interface ArchiveImage {
   pathname: string
   size: number
   uploadedAt: string
-  /** null = 店舗フォルダ導入前にアップロードされた共通画像 */
+  /** null = フォルダ導入前にアップロードされた画像 */
   folder?: string | null
+  /** company = 会社の画像 / store = 店舗の画像 / shared = 持ち主未設定（全社共通） */
+  ownership?: "company" | "store" | "shared"
 }
 
 interface UploadingFile {
@@ -106,6 +108,11 @@ export function ImageLibraryModal({
 
   /** locations/ を外した店舗ID（画像フォルダ名に使う） */
   const locationId = locationName?.replace(/^locations\//, "") ?? ""
+  /** この店舗が属する会社コード（未設定ならnull） */
+  const [companyCode, setCompanyCode] = useState<string | null>(null)
+  /** 持ち主が未設定で全店舗から見えている画像の数 */
+  const [sharedCount, setSharedCount] = useState(0)
+  const [assigning, setAssigning] = useState(false)
 
   const fetchArchive = useCallback(async () => {
     setArchiveLoading(true)
@@ -118,12 +125,68 @@ export function ImageLibraryModal({
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
       setArchive(Array.isArray(j.images) ? j.images : [])
+      setCompanyCode(j.companyCode ?? null)
+      setSharedCount(typeof j.sharedCount === "number" ? j.sharedCount : 0)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setArchiveLoading(false)
     }
   }, [locationId])
+
+  /** 選択中の画像を、この店舗（＝その会社）の画像として登録する */
+  const assignSelected = async () => {
+    if (!locationId || selected.size === 0) return
+    setAssigning(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/upload/owners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locationId, urls: [...selected] }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      setSelected(new Set())
+      await fetchArchive()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAssigning(false)
+    }
+  }
+
+  /** 投稿履歴から、どの画像がどの店舗のものかを推定して一括登録する */
+  const deriveOwners = async () => {
+    if (
+      !confirm(
+        "過去の予約投稿で使われた画像を、その投稿の店舗の画像として登録します。\n" +
+          "複数の店舗で使われている画像は、持ち主を決められないため共通のままにします。\n" +
+          "画像ファイルは移動しないので、既存の投稿の表示には影響しません。\n\n実行しますか？"
+      )
+    )
+      return
+    setAssigning(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/upload/owners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ derive: true }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      alert(
+        `${j.assigned}枚を店舗ごとに振り分けました。\n` +
+          `複数店舗で使われていて判定できなかった画像: ${j.skippedMultiStore}枚（共通のまま）`
+      )
+      await fetchArchive()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAssigning(false)
+    }
+  }
 
   useEffect(() => {
     if (isOpen && tab === "library") fetchMedia()
@@ -465,21 +528,65 @@ export function ImageLibraryModal({
                 </span>
               </div>
 
-              {/* どの店舗のフォルダを見ているかを明示する（別会社の画像を使わないため） */}
-              <p className="text-xs text-gray-600 bg-gray-50 border rounded px-3 py-2">
+              {/* どの範囲の画像を見ているかを明示する（別会社の画像を使わないため） */}
+              <div className="text-xs text-gray-600 bg-gray-50 border rounded px-3 py-2 space-y-1">
                 {locationId ? (
-                  <>
-                    <b>この会社のフォルダ</b>の画像を表示しています。アップロードした画像も
-                    同じフォルダに保存され、<b>他の会社からは見えません</b>。
-                    会社マスタで会社が未設定の店舗は、暫定でその店舗専用のフォルダになります。
-                  </>
+                  <p>
+                    {companyCode ? (
+                      <>
+                        会社コード <b>{companyCode}</b> の画像を表示しています。
+                        同じ会社の店舗どうしでは共有され、<b>他の会社からは見えません</b>。
+                      </>
+                    ) : (
+                      <>
+                        <b>この店舗の画像</b>を表示しています。
+                        この店舗はまだ会社マスタで会社に紐づいていないため、店舗単位で分かれています
+                        （管理設定→会社マスタで紐づけると会社単位になります）。
+                      </>
+                    )}
+                  </p>
                 ) : (
-                  <>
+                  <p>
                     店舗が選択されていないため<b>すべての画像</b>を表示しています。
-                    店舗を選んでから開くと、その店舗のフォルダだけに絞り込まれます。
-                  </>
+                    店舗を選んでから開くと、その店舗の会社の画像だけに絞り込まれます。
+                  </p>
                 )}
-              </p>
+                {sharedCount > 0 && (
+                  <p className="text-amber-800">
+                    うち <b>{sharedCount}枚</b> は持ち主が未設定で、
+                    <b>すべての会社から見えている状態</b>です（フォルダ導入前にアップロードされた画像）。
+                    下のボタンで振り分けられます。
+                  </p>
+                )}
+              </div>
+
+              {/* 持ち主の登録（ファイルは移動しないのでURLは変わらない） */}
+              {sharedCount > 0 && (
+                <div className="flex items-center justify-between gap-3 flex-wrap bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  <p className="text-xs text-amber-900">
+                    未設定の画像を会社ごとに分けるには、投稿履歴からの自動振り分けが使えます。
+                    <b>画像ファイルは移動しない</b>ため、既存の投稿の表示には影響しません。
+                  </p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {locationId && selected.size > 0 && (
+                      <button
+                        onClick={assignSelected}
+                        disabled={assigning}
+                        className="text-xs px-2.5 py-1.5 border rounded bg-white hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        選択した{selected.size}枚をこの店舗の画像にする
+                      </button>
+                    )}
+                    <button
+                      onClick={deriveOwners}
+                      disabled={assigning}
+                      className="text-xs px-2.5 py-1.5 border rounded bg-white hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {assigning ? "処理中…" : "投稿履歴から自動で振り分ける"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* 一括コピー: スプレッドシートへ縦方向に貼り付ける用 */}
               <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-100 rounded px-3 py-2 flex-wrap">
@@ -589,6 +696,14 @@ export function ImageLibraryModal({
                         <p className="text-xs font-medium truncate" title={displayName}>
                           {displayName}
                         </p>
+                        {img.ownership === "shared" && (
+                          <span
+                            className="inline-block text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 mt-0.5"
+                            title="持ち主が未設定のため、すべての会社から見えています"
+                          >
+                            共通（持ち主未設定）
+                          </span>
+                        )}
                         <div className="flex items-center justify-between mt-0.5">
                           <p className="text-[11px] text-gray-500">
                             {new Date(img.uploadedAt).toLocaleDateString("ja-JP")}・

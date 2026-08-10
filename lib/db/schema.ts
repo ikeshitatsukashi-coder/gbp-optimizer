@@ -535,6 +535,33 @@ export const lineBroadcasts = pgTable(
 
 export type LineBroadcast = typeof lineBroadcasts.$inferSelect
 
+/**
+ * 投稿画像の持ち主（どの店舗＝どの会社の画像か）。
+ *
+ * 画像は Vercel Blob 上のフォルダで分けているが、フォルダ導入前に
+ * アップロードされた画像は全社共通の場所にあり、移動するとURLが変わって
+ * 既存の投稿から参照できなくなる。
+ * そこで「ファイルは動かさず、持ち主だけを記録する」ための表。
+ */
+export const imageOwners = pgTable(
+  "image_owners",
+  {
+    /** Blob の公開URL */
+    url: text("url").primaryKey(),
+    /** この画像を使う店舗。会社は stores.company_id から解決する */
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** manual = 人が指定 / derived = 投稿履歴から推定 */
+    source: varchar("source", { length: 20 }).notNull().default("manual"),
+    assignedBy: text("assigned_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("image_owners_location_idx").on(t.locationName)]
+)
+
+export type ImageOwner = typeof imageOwners.$inferSelect
+
 /* -------------------------------------------------------------------------- */
 /*                       アンケート（クチコミ促進）                              */
 /* -------------------------------------------------------------------------- */
