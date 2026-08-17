@@ -17,6 +17,8 @@ const PUBLIC_PATHS = [
   "/share/",
   // 法務ページ（Meta/LINE等の審査で公開URLの提出が必須）
   "/privacy",
+  // Meta（Instagram / Facebook）の審査で提出するデータ削除の案内。認証なしで見られる必要がある
+  "/data-deletion",
   "/api/public/",
   // 予約投稿の定期実行（ルート内で CRON_SECRET 認証）
   "/api/cron/execute-scheduled",
