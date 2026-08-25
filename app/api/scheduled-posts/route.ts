@@ -168,6 +168,97 @@ export async function POST(request: Request) {
 /**
  * DELETE /api/scheduled-posts?id=N
  */
+/**
+ * PATCH /api/scheduled-posts?id=...
+ *
+ * 予約中・下書きの投稿を編集する。
+ * 既に実行済み（posted）やエラー（failed）のものは編集できない
+ * （投稿済みの内容を書き換えると実際のGBP投稿と食い違うため）。
+ */
+export async function PATCH(request: Request) {
+  const denied = await requireRole("editor")
+  if (denied) return denied
+
+  const accessToken = await getAccessToken()
+  if (!accessToken) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+  }
+
+  const id = parseInt(new URL(request.url).searchParams.get("id") ?? "", 10)
+  if (!id) {
+    return NextResponse.json({ error: "id is required" }, { status: 400 })
+  }
+
+  let body: {
+    locationName?: string
+    scheduledFor?: string
+    summary?: string
+    postType?: string
+    mediaUrls?: string[] | null
+    callToAction?: { actionType: string; url?: string } | null
+    draft?: boolean
+  }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+  }
+
+  if (body.summary !== undefined && !body.summary.trim()) {
+    return NextResponse.json({ error: "本文を入力してください" }, { status: 400 })
+  }
+
+  try {
+    const [current] = await db
+      .select({ id: scheduledPosts.id, status: scheduledPosts.status })
+      .from(scheduledPosts)
+      .where(eq(scheduledPosts.id, id))
+
+    if (!current) {
+      return NextResponse.json({ error: "予約投稿が見つかりません" }, { status: 404 })
+    }
+    if (!["pending", "draft"].includes(current.status)) {
+      return NextResponse.json(
+        {
+          error:
+            current.status === "posted"
+              ? "投稿済みのため編集できません（内容を変えるには新規投稿してください）"
+              : "この投稿は編集できません",
+        },
+        { status: 400 }
+      )
+    }
+
+    const updated = await db
+      .update(scheduledPosts)
+      .set({
+        ...(body.locationName ? { locationName: body.locationName } : {}),
+        ...(body.scheduledFor ? { scheduledFor: new Date(body.scheduledFor) } : {}),
+        ...(body.summary !== undefined ? { summary: body.summary.slice(0, 1500) } : {}),
+        ...(body.postType ? { postType: body.postType } : {}),
+        ...(body.mediaUrls !== undefined ? { mediaUrls: body.mediaUrls } : {}),
+        ...(body.callToAction !== undefined ? { callToAction: body.callToAction } : {}),
+        // 下書き⇄予約の切り替えもこの画面から行える
+        ...(body.draft !== undefined ? { status: body.draft ? "draft" : "pending" } : {}),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(scheduledPosts.id, id),
+          inArray(scheduledPosts.status, ["pending", "draft"])
+        )
+      )
+      .returning({ id: scheduledPosts.id })
+
+    if (updated.length === 0) {
+      return NextResponse.json({ error: "更新できませんでした" }, { status: 400 })
+    }
+    return NextResponse.json({ success: true, id: updated[0].id })
+  } catch (e) {
+    return errorResponse("Failed to update scheduled post", e)
+  }
+}
+
 export async function DELETE(request: Request) {
   const denied = await requireRole("editor")
   if (denied) return denied

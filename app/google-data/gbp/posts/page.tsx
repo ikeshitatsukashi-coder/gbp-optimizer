@@ -67,6 +67,8 @@ interface UnifiedRow {
   cta: { actionType?: string; url?: string } | null
   searchUrl?: string
   scheduledId?: number
+  /** 予約投稿の編集で対象店舗を特定するために持つ */
+  locationName?: string
 }
 
 const POST_TYPE_LABELS: Record<string, string> = {
@@ -457,6 +459,7 @@ export default function PostsPage() {
       summary: sp.summary,
       cta: sp.callToAction ?? null,
       scheduledId: sp.id,
+      locationName: sp.locationName,
     }))
 
     // タブ別: 投稿済 = v4 の公開済み投稿 ＋ 実行済み予約（Google側の反映待ち分）
@@ -646,11 +649,21 @@ export default function PostsPage() {
 
   const openDuplicate = (row: UnifiedRow) => {
     // モーダル open + 内容 pre-fill は下の modal component に prop 渡し
+    setEditTarget(null)
     duplicateSourceRef.current = row
     setShowNewModal(true)
   }
 
   const duplicateSourceRef = useRef<UnifiedRow | null>(null)
+  /** 予約投稿の編集対象（詳細ボタンから設定） */
+  const [editTarget, setEditTarget] = useState<UnifiedRow | null>(null)
+
+  /** 予約中・下書きの投稿を編集する */
+  const openEdit = (row: UnifiedRow) => {
+    duplicateSourceRef.current = null
+    setEditTarget(row)
+    setShowNewModal(true)
+  }
 
   return (
     <div>
@@ -1034,7 +1047,16 @@ export default function PostsPage() {
                     </button>
                   </td>
                   <td className="px-2">
-                    {r.source === "scheduled" ? (
+                    {r.source === "scheduled" &&
+                    (r.status === "pending" || r.status === "draft") ? (
+                      <button
+                        onClick={() => openEdit(r)}
+                        className="text-gray-400 hover:text-gray-700 inline-block"
+                        title="この予約投稿を編集する"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </button>
+                    ) : r.source === "scheduled" ? (
                       <Link
                         href={`/scheduled-posts?highlight=${r.scheduledId}`}
                         className="text-gray-400 hover:text-gray-700 inline-block"
@@ -1084,17 +1106,20 @@ export default function PostsPage() {
         onClose={() => {
           setShowNewModal(false)
           duplicateSourceRef.current = null
+          setEditTarget(null)
         }}
         onSuccess={(msg) => {
           setSuccess(msg)
           setShowNewModal(false)
           duplicateSourceRef.current = null
+          setEditTarget(null)
           loadAll()
         }}
         onError={(m) => setError(m)}
         locations={locations}
         defaultLocationName={locationName}
         duplicateFrom={duplicateSourceRef.current}
+        editTarget={editTarget}
       />
 
       {/* 画像アーカイブ（閲覧・アップロード・URLコピー・削除） */}
@@ -1326,6 +1351,8 @@ interface NewPostModalProps {
   locations: Array<{ name: string; title: string }>
   defaultLocationName: string | null
   duplicateFrom: UnifiedRow | null
+  /** 指定すると「新規作成」ではなく既存の予約投稿の編集になる */
+  editTarget: UnifiedRow | null
 }
 
 function NewPostModal({
@@ -1336,6 +1363,7 @@ function NewPostModal({
   locations,
   defaultLocationName,
   duplicateFrom,
+  editTarget,
 }: NewPostModalProps) {
   const [topicType, setTopicType] = useState<"STANDARD" | "OFFER" | "EVENT">("STANDARD")
   const [title, setTitle] = useState("")
@@ -1353,7 +1381,27 @@ function NewPostModal({
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    if (isOpen && duplicateFrom) {
+    if (isOpen && editTarget) {
+      // 編集: 本文・画像・CTAに加えて、店舗と予約日時もそのまま復元する
+      setTopicType((editTarget.postType as "STANDARD" | "OFFER" | "EVENT") ?? "STANDARD")
+      setTitle(editTarget.title === "—" ? "" : editTarget.title)
+      setSummary(editTarget.summary ?? "")
+      setMediaUrls(editTarget.imageUrl ? [editTarget.imageUrl] : [])
+      setCtaType(editTarget.cta?.actionType ?? "ACTION_TYPE_UNSPECIFIED")
+      setCtaUrl(editTarget.cta?.url ?? "")
+      setHashtags("")
+      setStore(editTarget.locationName ?? defaultLocationName ?? "")
+      setTiming("scheduled")
+      if (editTarget.scheduledFor) {
+        const d = new Date(editTarget.scheduledFor)
+        if (!isNaN(d.getTime())) {
+          setScheduledDate(toDateOnly(d))
+          setScheduledTime(
+            `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+          )
+        }
+      }
+    } else if (isOpen && duplicateFrom) {
       setTopicType((duplicateFrom.postType as "STANDARD" | "OFFER" | "EVENT") ?? "STANDARD")
       setTitle(duplicateFrom.title === "—" ? "" : duplicateFrom.title)
       setSummary(duplicateFrom.summary ?? "")
@@ -1374,7 +1422,7 @@ function NewPostModal({
       setStore(defaultLocationName ?? "")
       setTiming("immediate")
     }
-  }, [isOpen, duplicateFrom, defaultLocationName])
+  }, [isOpen, duplicateFrom, editTarget, defaultLocationName])
 
   if (!isOpen) return null
 
@@ -1424,13 +1472,29 @@ function NewPostModal({
         if (mediaUrls.length > 0) body.mediaUrls = mediaUrls
         if (callToAction) body.callToAction = callToAction
 
-        const { ok, error } = await fetchJson("/api/scheduled-posts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-        if (!ok) throw new Error(error ?? "保存に失敗しました")
-        onSuccess(asDraft ? "下書きを保存しました" : "予約を作成しました")
+        // 編集モードでは既存の予約投稿を更新する（新しい予約を作らない）
+        if (editTarget?.scheduledId) {
+          body.mediaUrls = mediaUrls
+          body.callToAction = callToAction ?? null
+          const { ok, error } = await fetchJson(
+            `/api/scheduled-posts?id=${editTarget.scheduledId}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            }
+          )
+          if (!ok) throw new Error(error ?? "保存に失敗しました")
+          onSuccess(asDraft ? "下書きを更新しました" : "予約投稿を更新しました")
+        } else {
+          const { ok, error } = await fetchJson("/api/scheduled-posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+          if (!ok) throw new Error(error ?? "保存に失敗しました")
+          onSuccess(asDraft ? "下書きを保存しました" : "予約を作成しました")
+        }
       } else {
         // 即時
         const post: Record<string, unknown> = {
@@ -1555,13 +1619,23 @@ function NewPostModal({
           <div>
             <label className="text-sm font-medium block mb-2">投稿日時</label>
             <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm">
+              <label
+                className={`flex items-center gap-2 text-sm ${
+                  editTarget ? "text-gray-400" : ""
+                }`}
+              >
                 <input
                   type="radio"
                   checked={timing === "immediate"}
                   onChange={() => setTiming("immediate")}
+                  disabled={!!editTarget}
                 />
                 即時
+                {editTarget && (
+                  <span className="text-[11px]">
+                    （予約投稿の編集中は選べません。今すぐ投稿する場合は「新規投稿」から）
+                  </span>
+                )}
               </label>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 text-sm shrink-0">
