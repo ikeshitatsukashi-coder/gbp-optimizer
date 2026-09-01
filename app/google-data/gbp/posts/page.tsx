@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import { useGbp } from "@/lib/store"
 import { ImageLibraryModal } from "@/components/gbp/image-library-modal"
-import { fetchJson } from "@/lib/fetch-json"
+import { fetchJson, fetchJsonRetry } from "@/lib/fetch-json"
 
 interface GbpPost {
   name: string
@@ -360,9 +360,14 @@ export default function PostsPage() {
     const url = locationName
       ? `/api/scheduled-posts?locationName=${encodeURIComponent(locationName)}`
       : `/api/scheduled-posts`
-    const res = await fetch(url)
-    const j = await res.json()
-    if (res.ok) setScheduled(j.posts)
+    // DBが休止から復帰する初回だけタイムアウトすることがあるため再試行つきで取得する。
+    // 失敗時に前の店舗のデータを残すと他社の投稿が見えてしまうので、その場合は空にする。
+    const r = await fetchJsonRetry<{ posts: ScheduledPost[] }>(url)
+    if (!r.ok) {
+      setScheduled([])
+      throw new Error(r.error ?? "予約投稿の取得に失敗しました")
+    }
+    setScheduled(r.data?.posts ?? [])
   }, [locationName])
 
   const loadAll = useCallback(async () => {
@@ -421,6 +426,12 @@ export default function PostsPage() {
   )
 
   const rows: UnifiedRow[] = useMemo(() => {
+    // 予約投稿は取得時にも店舗で絞っているが、取得が失敗して前の店舗のデータが
+    // 残っている場合に他社の投稿が出てしまうため、表示側でも必ず絞り込む。
+    const scheduledOfStore = locationName
+      ? scheduled.filter((sp) => sp.locationName === locationName)
+      : scheduled
+
     const p: UnifiedRow[] = published.map((post, idx) => ({
       key: `p:${post.name}`,
       source: "published",
@@ -441,7 +452,7 @@ export default function PostsPage() {
       searchUrl: post.searchUrl,
     }))
 
-    const s: UnifiedRow[] = scheduled.map((sp, idx) => ({
+    const s: UnifiedRow[] = scheduledOfStore.map((sp, idx) => ({
       key: `s:${sp.id}`,
       source: "scheduled",
       no: idx + 1,
@@ -467,7 +478,7 @@ export default function PostsPage() {
     // Google の投稿一覧APIは実投稿から反映まで時間がかかるため、
     // DB上 posted のレコードをマージして「投稿済（反映待ち）」として即座に見せる。
     const liveNames = new Set(published.map((post) => post.name))
-    const postedPending = scheduled
+    const postedPending = scheduledOfStore
       .filter(
         (sp) => sp.status === "posted" && !(sp.resultName && liveNames.has(sp.resultName))
       )
@@ -507,7 +518,7 @@ export default function PostsPage() {
       return db - da
     })
     return all.map((r, i) => ({ ...r, no: all.length - i }))
-  }, [published, scheduled, currentStoreTitle, tab, approvalStates])
+  }, [published, scheduled, currentStoreTitle, tab, approvalStates, locationName])
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()

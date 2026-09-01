@@ -309,10 +309,14 @@ export function ImageLibraryModal({
     onClose()
   }
 
+  /**
+   * URLをコピーする。
+   * 表示は自動で消さない（次にコピーするまで残す）。
+   * スプレッドシートへ順に貼っていく作業中に、どこまで使ったかを見失わないため。
+   */
   const copyUrl = async (url: string) => {
     await navigator.clipboard.writeText(url)
     setCopiedUrl(url)
-    setTimeout(() => setCopiedUrl(null), 1800)
   }
 
   /**
@@ -323,8 +327,8 @@ export function ImageLibraryModal({
     const urls = [...selected]
     if (urls.length === 0) return
     await navigator.clipboard.writeText(urls.join("\n"))
+    // こちらも次のコピーまで表示を残す
     setCopiedUrl("__bulk__")
-    setTimeout(() => setCopiedUrl(null), 2500)
   }
 
   const deleteArchiveImage = async (img: ArchiveImage) => {
