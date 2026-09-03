@@ -15,16 +15,19 @@ function DonutChart({ counts }: { counts: { label: string; count: number }[] }) 
   const total = counts.reduce((a, c) => a + c.count, 0)
   const R = 78
   const C = 2 * Math.PI * R
-  let acc = 0
+  // 円グラフの各扇形は「手前までの合計」を開始位置にする。
+  // 描画中に外側の変数を書き換えないよう、累計は reduce の中だけで持つ
   const segments = counts
     .map((c, i) => ({ ...c, color: COLORS[i % COLORS.length] }))
     .filter((c) => c.count > 0)
-    .map((c) => {
-      const frac = c.count / total
-      const seg = { color: c.color, dash: frac * C, offset: acc * C }
-      acc += frac
-      return seg
-    })
+    .reduce<{ segs: { color: string; dash: number; offset: number }[]; acc: number }>(
+      (state, c) => {
+        const frac = c.count / total
+        state.segs.push({ color: c.color, dash: frac * C, offset: state.acc * C })
+        return { segs: state.segs, acc: state.acc + frac }
+      },
+      { segs: [], acc: 0 }
+    ).segs
   return (
     <svg viewBox="0 0 208 208" className="w-full h-full">
       <circle cx="104" cy="104" r={R} fill="none" stroke="#f1f5f9" strokeWidth="40" />

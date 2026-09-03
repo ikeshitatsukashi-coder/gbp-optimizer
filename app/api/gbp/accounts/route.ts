@@ -27,6 +27,18 @@ export async function GET(request: Request) {
     const accounts = await client.listAccounts()
     return NextResponse.json({ accounts })
   } catch (error) {
+    // Googleのトークンが切れている場合、そのままだと英語のOAuthエラーが
+    // 「サーバーエラー」として出てしまい、再ログインが必要だと分からない
+    const msg = error instanceof Error ? error.message : String(error)
+    if (/invalid authentication credentials|invalid_grant|UNAUTHENTICATED|401/i.test(msg)) {
+      return NextResponse.json(
+        {
+          error:
+            "Googleの認証が切れています。右上からログアウトし、Googleで再ログインしてください。",
+        },
+        { status: 401 }
+      )
+    }
     return errorResponse("Failed to fetch accounts", error)
   }
 }

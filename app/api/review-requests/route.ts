@@ -124,6 +124,23 @@ export async function POST(request: Request) {
     if (!survey || survey.status !== "active") {
       return NextResponse.json({ error: "対象アンケートが見つからないか停止中です" }, { status: 400 })
     }
+    // 送信先の店舗がそのアンケートの対象になっているか確認する。
+    // 対象外のURLを送ると、開いても別の店舗名が表示され、回答も保存できない。
+    if (
+      survey.targetStores &&
+      survey.targetStores.length > 0 &&
+      !survey.targetStores.includes(store.locationName)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            `「${store.title}」は アンケート「${survey.name}」の対象店舗になっていません。` +
+            `このまま送るとURLを開いても別の店舗名が表示され、回答も保存できません。` +
+            `クチコミ促進 → アンケート配布 で、この店舗を対象に追加してください。`,
+        },
+        { status: 400 }
+      )
+    }
     surveyId = survey.id
     const origin = new URL(request.url).origin
     kutikomiUrl = `${origin}/s/${survey.token}?store=${locationIdOf(store.locationName)}`
