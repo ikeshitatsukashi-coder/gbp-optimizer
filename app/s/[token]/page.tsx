@@ -284,9 +284,13 @@ function SurveyForm() {
   /* -------------------------------- 回答フォーム -------------------------------- */
   // 店舗が確定している場合（URL指定 or 対象店舗が1つ）は選択欄を出さない
   const showStoreSelector = !fixedStore && survey.stores.length > 1
-  const fixedStoreTitle =
-    (fixedStore ? survey.stores.find((s) => s.id === fixedStore)?.title : null) ??
-    (survey.stores.length === 1 ? survey.stores[0].title : null)
+  // URLで店舗が指定されている場合、その店舗が見つからないときに
+  // 別の店舗名を代わりに出さない（回答者に誤った店舗名を見せないため）
+  const fixedStoreTitle = fixedStore
+    ? (survey.stores.find((s) => s.id === fixedStore)?.title ?? null)
+    : survey.stores.length === 1
+      ? survey.stores[0].title
+      : null
 
   return (
     <Shell>

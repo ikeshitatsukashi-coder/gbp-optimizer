@@ -165,6 +165,22 @@ export async function PATCH(request: Request) {
         .where(eq(surveys.id, id))
     }
 
+    // 対象店舗の変更は、回答があっても行える。
+    // 配布先を増やすだけで既存の回答内容には影響せず、
+    // これができないと後から店舗を追加したQRが「対象外の店舗です」で保存できなくなる。
+    if (body.targetStores !== undefined) {
+      await db
+        .update(surveys)
+        .set({
+          targetStores:
+            Array.isArray(body.targetStores) && body.targetStores.length > 0
+              ? body.targetStores
+              : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(surveys.id, id))
+    }
+
     // 内容編集は回答ゼロの場合のみ
     if (body.questions || body.name || body.description !== undefined) {
       if (hasResponses) {

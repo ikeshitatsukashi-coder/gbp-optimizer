@@ -25,6 +25,8 @@ interface SurveyOption {
   token: string
   name: string
   questions: { title: string }[]
+  /** このアンケートが回答を受け付ける店舗。空なら全店舗を受け付ける */
+  targetStores?: string[] | null
 }
 
 /** ポスターデザイン（参考デザイン準拠の4方向） */
@@ -61,6 +63,10 @@ interface PosterProps {
   subtitle: string
   bodyText: string
   telFallback: string
+  /** お問い合わせ先の表記（空なら店舗名） */
+  contactText: string
+  /** 電話番号を表示するか */
+  showTel: boolean
   qrLabel: string
   checkItems: string[]
 }
@@ -413,7 +419,7 @@ function Bubble({
   )
 }
 
-function PosterPop({ store, qr, subtitle, bodyText, telFallback, qrLabel }: PosterProps) {
+function PosterPop({ store, qr, subtitle, bodyText, telFallback, contactText, showTel, qrLabel }: PosterProps) {
   return (
     <div
       style={{
@@ -582,8 +588,8 @@ function PosterPop({ store, qr, subtitle, bodyText, telFallback, qrLabel }: Post
           justifyContent: "space-between",
         }}
       >
-        <span>お問い合わせ　{store.title}</span>
-        <span>TEL {store.primaryPhone || telFallback || "—"}</span>
+        <span>お問い合わせ　{contactText || store.title}</span>
+        {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
       </div>
     </div>
   )
@@ -613,7 +619,7 @@ function CornerBracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
   return <div style={{ ...base, ...map[pos] }} />
 }
 
-function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, qrLabel }: PosterProps) {
+function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, contactText, showTel, qrLabel }: PosterProps) {
   return (
     <div
       style={{
@@ -778,7 +784,8 @@ function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, qrLabel }: 
             letterSpacing: "0.4mm",
           }}
         >
-          {store.title}　　TEL {store.primaryPhone || telFallback || "—"}
+          {contactText || store.title}
+          {showTel && `　　TEL ${store.primaryPhone || telFallback || "—"}`}
         </div>
       </div>
     </div>
@@ -837,6 +844,8 @@ function PosterChecklist({
   subtitle,
   bodyText,
   telFallback,
+  contactText,
+  showTel,
   qrLabel,
   checkItems,
 }: PosterProps) {
@@ -1003,8 +1012,8 @@ function PosterChecklist({
           justifyContent: "space-between",
         }}
       >
-        <span>お問い合わせ　{store.title}</span>
-        <span>TEL {store.primaryPhone || telFallback || "—"}</span>
+        <span>お問い合わせ　{contactText || store.title}</span>
+        {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
       </div>
     </div>
   )
@@ -1016,7 +1025,7 @@ const INFO_BG = "#d8ece8"
 const INFO_TEAL = "#2f8f85"
 const INFO_DARK = "#1f4844"
 
-function PosterInfo({ store, qr, subtitle, bodyText, telFallback, qrLabel }: PosterProps) {
+function PosterInfo({ store, qr, subtitle, bodyText, telFallback, contactText, showTel, qrLabel }: PosterProps) {
   return (
     <div
       style={{
@@ -1168,8 +1177,8 @@ function PosterInfo({ store, qr, subtitle, bodyText, telFallback, qrLabel }: Pos
           justifyContent: "space-between",
         }}
       >
-        <span>お問い合わせ　{store.title}</span>
-        <span>TEL {store.primaryPhone || telFallback || "—"}</span>
+        <span>お問い合わせ　{contactText || store.title}</span>
+        {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
       </div>
     </div>
   )
@@ -1196,6 +1205,10 @@ export default function DistributePage() {
   const [subtitle, setSubtitle] = useState("アンケート ご協力のお願い")
   const [body, setBody] = useState("")
   const [telFallback, setTelFallback] = useState("")
+  /** お問い合わせ先の表記（空なら店舗名をそのまま使う） */
+  const [contactText, setContactText] = useState("")
+  /** フッターに電話番号を載せるか */
+  const [showTel, setShowTel] = useState(true)
 
   // 名刺設定
   const [cardColor, setCardColor] = useState(CARD_COLORS[0])
@@ -1234,11 +1247,13 @@ export default function DistributePage() {
               token: string
               name: string
               questions: { title: string }[]
+              targetStores?: string[] | null
             }) => ({
               id: s.id,
               token: s.token,
               name: s.name,
               questions: s.questions ?? [],
+              targetStores: s.targetStores ?? null,
             })
           )
         setSurveys(list)
@@ -1254,6 +1269,49 @@ export default function DistributePage() {
         : stores.filter((s) => selected.has(s.locationName)),
     [storeMode, stores, selected]
   )
+
+  /**
+   * アンケートQRの場合、選んだ店舗がそのアンケートの対象になっているかを確認する。
+   * 対象外の店舗のQRを配ると、読み取っても別の店舗名が表示され、回答も保存できない。
+   */
+  const currentSurvey = surveys.find((sv) => sv.id === surveyId) ?? null
+  const outOfScopeStores = useMemo(() => {
+    if (qrTarget !== "survey" || !currentSurvey) return []
+    const target = currentSurvey.targetStores
+    // 対象店舗が未設定のアンケートは全店舗を受け付ける
+    if (!target || target.length === 0) return []
+    return targetStores.filter((st) => !target.includes(st.locationName))
+  }, [qrTarget, currentSurvey, targetStores])
+
+  /** 対象外の店舗を、このアンケートの対象に追加する */
+  const [addingScope, setAddingScope] = useState(false)
+  const addOutOfScopeToSurvey = async () => {
+    if (!currentSurvey || outOfScopeStores.length === 0) return
+    setAddingScope(true)
+    setError(null)
+    try {
+      const merged = [
+        ...(currentSurvey.targetStores ?? []),
+        ...outOfScopeStores.map((st) => st.locationName),
+      ]
+      const res = await fetch(`/api/surveys?id=${currentSurvey.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetStores: merged }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || "対象店舗の追加に失敗しました")
+      setSurveys((prev) =>
+        prev.map((sv) =>
+          sv.id === currentSurvey.id ? { ...sv, targetStores: merged } : sv
+        )
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAddingScope(false)
+    }
+  }
 
   const qrUrlFor = (store: StoreRow): string | null => {
     if (qrTarget === "google") return googleReviewUrl(store)
@@ -1271,6 +1329,14 @@ export default function DistributePage() {
     }
     if (qrTarget === "survey" && !surveyId) {
       setError("対象アンケートを選択してください（まず「アンケート一覧」から作成）")
+      return
+    }
+    if (outOfScopeStores.length > 0) {
+      setError(
+        `選択した店舗のうち${outOfScopeStores.length}店舗が、このアンケートの対象になっていません。` +
+          `このまま出力するとQRを読み取っても別の店舗名が表示され、回答も保存できません。` +
+          `上の警告から対象に追加してください。`
+      )
       return
     }
     setPreparing(true)
@@ -1355,6 +1421,8 @@ export default function DistributePage() {
       subtitle,
       bodyText,
       telFallback,
+      contactText,
+      showTel,
       qrLabel,
       checkItems,
     }
@@ -1623,6 +1691,37 @@ export default function DistributePage() {
             )}
           </div>
 
+          {/* 選んだ店舗がアンケートの対象外だと、QRを読んでも別の店舗名が出て回答も保存できない */}
+          {outOfScopeStores.length > 0 && (
+            <div className="mb-4 rounded border border-red-300 bg-red-50 p-3">
+              <p className="text-sm text-red-800 font-bold">
+                選択中の{outOfScopeStores.length}店舗は、このアンケートの対象になっていません
+              </p>
+              <p className="text-xs text-red-700 mt-1 leading-relaxed">
+                このまま出力すると、QRを読み取っても
+                <b>「{currentSurvey?.targetStores?.length === 1 ? "別の店舗名" : "対象店舗名"}」</b>
+                が表示され、回答も保存できません。
+              </p>
+              <ul className="text-xs text-red-700 mt-2 list-disc pl-5 space-y-0.5">
+                {outOfScopeStores.slice(0, 8).map((st) => (
+                  <li key={st.locationName}>{st.title}</li>
+                ))}
+                {outOfScopeStores.length > 8 && (
+                  <li>ほか {outOfScopeStores.length - 8} 店舗</li>
+                )}
+              </ul>
+              <button
+                onClick={addOutOfScopeToSurvey}
+                disabled={addingScope}
+                className="mt-2 text-xs px-3 py-1.5 rounded bg-white border border-red-300 text-red-800 hover:bg-red-100 disabled:opacity-50"
+              >
+                {addingScope
+                  ? "追加中…"
+                  : `この${outOfScopeStores.length}店舗を「${currentSurvey?.name}」の対象に追加する`}
+              </button>
+            </div>
+          )}
+
           {tab === "poster" ? (
             <>
               <div>
@@ -1707,15 +1806,41 @@ export default function DistributePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold mb-1">
-                  お問い合わせTEL（店舗に電話番号が未登録の場合に使用）
-                </label>
+                <label className="block text-sm font-bold mb-1">お問い合わせ先の表記</label>
                 <input
                   type="text"
-                  value={telFallback}
-                  onChange={(e) => setTelFallback(e.target.value)}
-                  className="w-full h-10 px-3 text-sm border rounded max-w-60"
+                  value={contactText}
+                  onChange={(e) => setContactText(e.target.value)}
+                  placeholder="空欄の場合は店舗名がそのまま入ります"
+                  className="w-full h-10 px-3 text-sm border rounded"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  ポスター下部の「お問い合わせ」欄に入る文字です。部署名や担当者名を入れる場合はこちらに入力してください。
+                </p>
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-bold mb-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showTel}
+                    onChange={(e) => setShowTel(e.target.checked)}
+                  />
+                  電話番号を記載する
+                </label>
+                {showTel && (
+                  <>
+                    <input
+                      type="text"
+                      value={telFallback}
+                      onChange={(e) => setTelFallback(e.target.value)}
+                      placeholder="店舗に電話番号が未登録の場合に使用"
+                      className="w-full h-10 px-3 text-sm border rounded max-w-60 mt-1"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      店舗に登録された電話番号が優先されます。空欄の店舗にはここの番号が入ります。
+                    </p>
+                  </>
+                )}
               </div>
             </>
           ) : (
