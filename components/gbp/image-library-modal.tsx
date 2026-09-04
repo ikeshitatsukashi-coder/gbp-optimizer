@@ -35,6 +35,8 @@ interface ArchiveImage {
 }
 
 interface UploadingFile {
+  /** 連続アップロードで一覧が増えていくため、行の特定は添字ではなくIDで行う */
+  id: string
   name: string
   status: "resizing" | "uploading" | "done" | "error"
   error?: string
@@ -227,7 +229,8 @@ export function ImageLibraryModal({
   /**
    * ローカルファイル群を リサイズ → アップロード。
    * selectモード: 完了後そのまま投稿に添付して閉じる
-   * manageモード: アーカイブを更新してアーカイブタブへ
+   * manageモード: アップロードタブに留まり、続けて次の画像をアップロードできる
+   *               （一覧は前回までの分に追記していく）
    */
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -239,15 +242,23 @@ export function ImageLibraryModal({
       return
     }
     setError(null)
-    setUploads(list.map((f) => ({ name: f.name, status: "resizing" as const })))
+
+    const batch = list.map((f, i) => ({
+      id: `${Date.now()}-${i}-${f.name}`,
+      name: f.name,
+      status: "resizing" as const,
+    }))
+    // manageモードは連続アップロードするため、これまでの結果を消さずに追記する
+    setUploads((prev) => (mode === "manage" ? [...prev, ...batch] : batch))
 
     const urls: string[] = []
     for (let i = 0; i < list.length; i++) {
       const file = list[i]
+      const id = batch[i].id
       try {
         const resized = await resizeImageForGbp(file)
         setUploads((prev) =>
-          prev.map((u, idx) => (idx === i ? { ...u, status: "uploading" } : u))
+          prev.map((u) => (u.id === id ? { ...u, status: "uploading" } : u))
         )
         const fd = new FormData()
         fd.append("file", new File([resized.blob], resized.fileName, { type: "image/jpeg" }))
@@ -261,12 +272,12 @@ export function ImageLibraryModal({
 
         urls.push(data.url)
         setUploads((prev) =>
-          prev.map((u, idx) => (idx === i ? { ...u, status: "done" } : u))
+          prev.map((u) => (u.id === id ? { ...u, status: "done" } : u))
         )
       } catch (e) {
         setUploads((prev) =>
-          prev.map((u, idx) =>
-            idx === i
+          prev.map((u) =>
+            u.id === id
               ? {
                   ...u,
                   status: "error",
@@ -278,16 +289,12 @@ export function ImageLibraryModal({
       }
     }
 
-    if (urls.length > 0) {
-      if (mode === "manage" || !onSelect) {
-        // アーカイブに反映して一覧タブへ
-        await fetchArchive()
-        setTab("archive")
-      } else {
-        onSelect(urls)
-        if (urls.length === list.length) {
-          setTimeout(() => onClose(), 400)
-        }
+    // manageモードではアーカイブタブへ移動せず、続けて次の画像をアップロードできる
+    // ようにする（アーカイブはタブを開いたときに読み直される）
+    if (urls.length > 0 && mode !== "manage" && onSelect) {
+      onSelect(urls)
+      if (urls.length === list.length) {
+        setTimeout(() => onClose(), 400)
       }
     }
   }
@@ -436,7 +443,12 @@ export function ImageLibraryModal({
                     accept="image/*"
                     multiple
                     className="hidden"
-                    onChange={(e) => handleFiles(e.target.files)}
+                    onChange={async (e) => {
+                      const input = e.currentTarget
+                      await handleFiles(input.files)
+                      // 同じファイルを選び直しても onChange が起きるように空に戻す
+                      input.value = ""
+                    }}
                   />
                   <p className="text-xs text-gray-500">
                     {mode === "manage"
@@ -449,8 +461,8 @@ export function ImageLibraryModal({
               {/* Upload progress */}
               {uploads.length > 0 && (
                 <div className="border rounded divide-y">
-                  {uploads.map((u, i) => (
-                    <div key={i} className="flex items-center gap-2 px-3 py-2 text-sm">
+                  {uploads.map((u) => (
+                    <div key={u.id} className="flex items-center gap-2 px-3 py-2 text-sm">
                       {u.status === "done" ? (
                         <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                       ) : u.status === "error" ? (
