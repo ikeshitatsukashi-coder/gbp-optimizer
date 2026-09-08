@@ -301,7 +301,12 @@ export async function getFlagCandidates(options?: {
       AND length(trim(r.comment)) > 0
       ${
         options?.locationNames?.length
-          ? sql`AND r.location_name = ANY(${options.locationNames})`
+          ? // 配列をそのまま埋め込むとプレースホルダが1つずつに展開され
+            // ANY() が配列を受け取れないため、IN (...) を組み立てる
+            sql`AND r.location_name IN (${sql.join(
+              options.locationNames.map((l) => sql`${l}`),
+              sql`, `
+            )})`
           : sql``
       }
       ${
