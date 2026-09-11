@@ -29,12 +29,20 @@ interface SurveyOption {
   targetStores?: string[] | null
 }
 
-/** ポスターデザイン（参考デザイン準拠の4方向） */
+/**
+ * ポスターデザイン。
+ * target で「どのQRの時に選べるか」を分ける。
+ *   both   … アンケート / Googleクチコミ どちらでも使える
+ *   google … Googleクチコミ専用（クチコミ投稿への導線に特化したデザイン）
+ */
 const POSTER_DESIGNS = {
-  pop: { label: "ポップ（吹き出し）", swatch: "#2b46c8" },
-  minimal: { label: "ミニマル・ナチュラル", swatch: "#9fd4d4" },
-  checklist: { label: "チェックリスト", swatch: "#e8833a" },
-  info: { label: "しっかり案内", swatch: "#2f8f85" },
+  pop: { label: "ポップ（吹き出し）", swatch: "#2b46c8", target: "both" },
+  minimal: { label: "ミニマル・ナチュラル", swatch: "#9fd4d4", target: "both" },
+  checklist: { label: "チェックリスト", swatch: "#e8833a", target: "both" },
+  info: { label: "しっかり案内", swatch: "#2f8f85", target: "both" },
+  gpop: { label: "クチコミ専用・ポップ", swatch: "#ea4335", target: "google" },
+  gstar: { label: "クチコミ専用・星", swatch: "#fbbc05", target: "google" },
+  gchic: { label: "クチコミ専用・シック", swatch: "#16233a", target: "google" },
 } as const
 type PosterDesignKey = keyof typeof POSTER_DESIGNS
 
@@ -44,6 +52,17 @@ const BODY_SIMPLE =
   "本日はご利用いただきありがとうございました！\nよろしければアンケートにご回答お願いいたします。"
 const BODY_DETAILED =
   "本日はご利用いただき誠にありがとうございました。\nお客様の声をより良いサービスづくりに活かすため、アンケートを実施しております。\n1分ほどで完了しますので、ぜひご協力をお願いいたします。"
+/** QRの遷移先がGoogleクチコミのときの案内文（アンケート用の文面のままだと内容が合わない） */
+const GOOGLE_BODY_SIMPLE =
+  "本日はご利用いただきありがとうございました！\nよろしければGoogleのクチコミ投稿にご協力ください。"
+const GOOGLE_BODY_DETAILED =
+  "本日はご利用いただき誠にありがとうございました。\nみなさまの声が、これからのサービスをより良くする力になります。\n1分ほどで投稿できますので、ぜひご協力をお願いいたします。"
+
+/** サブタイトルの初期値（QRの遷移先で切り替える） */
+const SUBTITLE_DEFAULT = {
+  survey: "アンケート ご協力のお願い",
+  google: "クチコミ投稿 よろしくお願いします",
+} as const
 
 const FONT_SANS =
   "'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Noto Sans JP',sans-serif"
@@ -63,7 +82,12 @@ interface PosterProps {
   subtitle: string
   bodyText: string
   telFallback: string
-  /** お問い合わせ先の表記（空なら店舗名） */
+  /**
+   * ポスターに載せる会社名の上書き（空ならGBPの登録名をそのまま使う）。
+   * 「株式会社◯◯ 本社（◯◯グループ）」のような表記に直したい場合に使う。
+   */
+  companyName: string
+  /** お問い合わせ先の表記（空なら会社名） */
   contactText: string
   /** 電話番号を表示するか */
   showTel: boolean
@@ -419,7 +443,7 @@ function Bubble({
   )
 }
 
-function PosterPop({ store, qr, subtitle, bodyText, telFallback, contactText, showTel, qrLabel }: PosterProps) {
+function PosterPop({ store, qr, subtitle, bodyText, telFallback, companyName, contactText, showTel, qrLabel }: PosterProps) {
   return (
     <div
       style={{
@@ -495,7 +519,7 @@ function PosterPop({ store, qr, subtitle, bodyText, telFallback, contactText, sh
         }}
       >
         <p style={{ fontSize: "5.5mm", fontWeight: 700, color: "#333", marginBottom: "6mm" }}>
-          {store.title}
+          {companyName || store.title}
         </p>
         <p
           style={{
@@ -588,7 +612,7 @@ function PosterPop({ store, qr, subtitle, bodyText, telFallback, contactText, sh
           justifyContent: "space-between",
         }}
       >
-        <span>お問い合わせ　{contactText || store.title}</span>
+        <span>お問い合わせ　{contactText || companyName || store.title}</span>
         {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
       </div>
     </div>
@@ -619,7 +643,7 @@ function CornerBracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
   return <div style={{ ...base, ...map[pos] }} />
 }
 
-function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, contactText, showTel, qrLabel }: PosterProps) {
+function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, companyName, contactText, showTel, qrLabel }: PosterProps) {
   return (
     <div
       style={{
@@ -660,7 +684,7 @@ function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, contactText
           }}
         >
           <span style={{ display: "inline-block", width: "22mm", height: "0.4mm", backgroundColor: MIN_INK }} />
-          {store.title}
+          {companyName || store.title}
           <span style={{ display: "inline-block", width: "22mm", height: "0.4mm", backgroundColor: MIN_INK }} />
         </div>
 
@@ -784,7 +808,7 @@ function PosterMinimal({ store, qr, subtitle, bodyText, telFallback, contactText
             letterSpacing: "0.4mm",
           }}
         >
-          {contactText || store.title}
+          {contactText || companyName || store.title}
           {showTel && `　　TEL ${store.primaryPhone || telFallback || "—"}`}
         </div>
       </div>
@@ -844,6 +868,7 @@ function PosterChecklist({
   subtitle,
   bodyText,
   telFallback,
+  companyName,
   contactText,
   showTel,
   qrLabel,
@@ -866,7 +891,7 @@ function PosterChecklist({
       {/* ヘッダー */}
       <div style={{ textAlign: "center", paddingTop: "14mm" }}>
         <p style={{ fontSize: "5mm", color: "#6b5a46", fontWeight: 600 }}>
-          {store.title} をご利用のみなさまへ
+          {companyName || store.title} をご利用のみなさまへ
         </p>
         <p
           style={{
@@ -1012,7 +1037,7 @@ function PosterChecklist({
           justifyContent: "space-between",
         }}
       >
-        <span>お問い合わせ　{contactText || store.title}</span>
+        <span>お問い合わせ　{contactText || companyName || store.title}</span>
         {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
       </div>
     </div>
@@ -1025,7 +1050,7 @@ const INFO_BG = "#d8ece8"
 const INFO_TEAL = "#2f8f85"
 const INFO_DARK = "#1f4844"
 
-function PosterInfo({ store, qr, subtitle, bodyText, telFallback, contactText, showTel, qrLabel }: PosterProps) {
+function PosterInfo({ store, qr, subtitle, bodyText, telFallback, companyName, contactText, showTel, qrLabel }: PosterProps) {
   return (
     <div
       style={{
@@ -1043,7 +1068,7 @@ function PosterInfo({ store, qr, subtitle, bodyText, telFallback, contactText, s
           ＼ みなさまの声をお聞かせください！ ／
         </p>
         <p style={{ fontSize: "4.6mm", fontWeight: 600, marginTop: "3mm" }}>
-          {store.title} をご利用のみなさまへ
+          {companyName || store.title} をご利用のみなさまへ
         </p>
       </div>
 
@@ -1117,10 +1142,8 @@ function PosterInfo({ store, qr, subtitle, bodyText, telFallback, contactText, s
           ー ご回答に当たって ー
         </p>
         <ul style={{ fontSize: "4.1mm", lineHeight: 2.1, fontWeight: 500 }}>
-          <li>
-            ・スマートフォン、タブレットなどから下記の{qrLabel}
-            にアクセスし、ご回答ください。
-          </li>
+          {/* QRの遷移先で文が壊れないよう、遷移先名を文中に差し込まない */}
+          <li>・スマートフォン、タブレットなどから下記のQRコードを読み取ってください。</li>
           <li>・所要時間は1〜2分です。</li>
           <li>・いただいたご回答は、サービス向上の目的にのみ利用いたします。</li>
         </ul>
@@ -1177,7 +1200,732 @@ function PosterInfo({ store, qr, subtitle, bodyText, telFallback, contactText, s
           justifyContent: "space-between",
         }}
       >
-        <span>お問い合わせ　{contactText || store.title}</span>
+        <span>お問い合わせ　{contactText || companyName || store.title}</span>
+        {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
+      </div>
+    </div>
+  )
+}
+
+/* ==================== Googleクチコミ専用デザイン（3種） ====================
+ *
+ * アンケートを挟まず、Googleのクチコミ投稿画面へ直接飛ばすためのポップ。
+ * クチコミの「例文」は載せない。実際には投稿されていない感想を掲示物に印刷すると
+ * 作り物のクチコミを見せていると受け取られかねないため、書き方の案内にとどめる。
+ */
+
+const G_BLUE = "#4285f4"
+const G_RED = "#ea4335"
+const G_YELLOW = "#fbbc05"
+const G_GREEN = "#34a853"
+const G_STRIPE = [G_BLUE, G_RED, G_YELLOW, G_BLUE, G_GREEN, G_RED]
+const G_INK = "#1f2430"
+const STAR_PATH =
+  "M12 2 L14.47 8.6 L21.51 8.91 L15.99 13.3 L17.88 20.09 L12 16.2 L6.12 20.09 L8.01 13.3 L2.49 8.91 L9.53 8.6 Z"
+
+/** Googleカラーの帯 */
+function GoogleStripe({ heightMm, style }: { heightMm: number; style?: React.CSSProperties }) {
+  return (
+    <div style={{ display: "flex", width: "100%", height: `${heightMm}mm`, ...style }}>
+      {G_STRIPE.map((c, i) => (
+        <div key={i} style={{ flex: 1, backgroundColor: c }} />
+      ))}
+    </div>
+  )
+}
+
+/** 星を横並びで表示 */
+function StarRow({
+  sizeMm,
+  gapMm = 1.5,
+  filled = 5,
+  color = G_YELLOW,
+  emptyColor = "#d7dbe2",
+  style,
+}: {
+  sizeMm: number
+  gapMm?: number
+  filled?: number
+  color?: string
+  emptyColor?: string
+  style?: React.CSSProperties
+}) {
+  return (
+    <div style={{ display: "flex", gap: `${gapMm}mm`, ...style }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <svg
+          key={i}
+          viewBox="0 0 24 24"
+          style={{ width: `${sizeMm}mm`, height: `${sizeMm}mm`, display: "block" }}
+        >
+          <path d={STAR_PATH} fill={i < filled ? color : emptyColor} />
+        </svg>
+      ))}
+    </div>
+  )
+}
+
+/** スマホに星が並んだ線画（投稿ステップ用） */
+function PhoneStarsIcon({
+  widthMm,
+  color,
+  style,
+}: {
+  widthMm: number
+  color: string
+  style?: React.CSSProperties
+}) {
+  return (
+    <svg viewBox="0 0 100 100" style={{ width: `${widthMm}mm`, height: `${widthMm}mm`, ...style }}>
+      <rect x="26" y="5" width="48" height="90" rx="9" fill="white" stroke={color} strokeWidth="4" />
+      <path d="M42 13 h16" stroke={color} strokeWidth="3.5" strokeLinecap="round" />
+      <rect x="33" y="26" width="34" height="6" rx="3" fill="#dfe3ea" />
+      {[0, 1, 2, 3, 4].map((i) => (
+        <path
+          key={i}
+          transform={`translate(${32 + i * 7.6} 40) scale(0.31)`}
+          d={STAR_PATH}
+          fill={G_YELLOW}
+        />
+      ))}
+      <rect x="33" y="56" width="34" height="4.5" rx="2.2" fill="#e6e9ef" />
+      <rect x="33" y="64" width="26" height="4.5" rx="2.2" fill="#e6e9ef" />
+      <rect x="33" y="76" width="34" height="9" rx="4.5" fill={G_BLUE} />
+    </svg>
+  )
+}
+
+/** 地図ピン＋星（クチコミの見出し用） */
+function PinStarIcon({ widthMm, style }: { widthMm: number; style?: React.CSSProperties }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      style={{ width: `${widthMm}mm`, height: `${widthMm}mm`, ...style }}
+    >
+      <path
+        d="M50 8 q20 0 20 21 q0 17 -20 40 q-20 -23 -20 -40 q0 -21 20 -21 z"
+        fill={G_RED}
+      />
+      <circle cx="50" cy="29" r="8.5" fill="white" />
+      <path transform="translate(60 56) scale(1.5)" d={STAR_PATH} fill={G_YELLOW} />
+      <path transform="translate(20 60) scale(1.1)" d={STAR_PATH} fill={G_YELLOW} />
+    </svg>
+  )
+}
+
+/** ステップ番号の丸 */
+function StepNumber({
+  n,
+  color,
+  sizeMm,
+  textColor = "white",
+}: {
+  n: number
+  color: string
+  sizeMm: number
+  textColor?: string
+}) {
+  return (
+    <div
+      style={{
+        width: `${sizeMm}mm`,
+        height: `${sizeMm}mm`,
+        borderRadius: "50%",
+        backgroundColor: color,
+        color: textColor,
+        fontSize: `${sizeMm * 0.58}mm`,
+        fontWeight: 900,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {n}
+    </div>
+  )
+}
+
+/** 書き方の案内（クチコミ例文ではない） */
+const G_TIPS: { text: string; variant: "short" | "bob" | "glasses"; hair: string; shirt: string }[] =
+  [
+    { text: "星を選ぶだけでも投稿できます", variant: "short", hair: "#2f2a28", shirt: G_BLUE },
+    { text: "よかった点をひとことでOKです", variant: "bob", hair: "#6e4b38", shirt: G_GREEN },
+    { text: "お写真の投稿も歓迎しています", variant: "glasses", hair: "#8d939c", shirt: G_RED },
+  ]
+
+/* ---------------------- ⑤ クチコミ専用・ポップ ---------------------- */
+
+function PosterGooglePop({
+  store,
+  qr,
+  subtitle,
+  bodyText,
+  telFallback,
+  companyName,
+  contactText,
+  showTel,
+}: PosterProps) {
+  return (
+    <div
+      style={{
+        width: "210mm",
+        height: "296mm",
+        position: "relative",
+        backgroundColor: "white",
+        overflow: "hidden",
+        fontFamily: FONT_SANS,
+        color: G_INK,
+        backgroundImage: "radial-gradient(#dfe4ec 0.5mm, transparent 0.5mm)",
+        backgroundSize: "7mm 7mm",
+      }}
+    >
+      <GoogleStripe heightMm={7} style={{ position: "absolute", left: 0, top: 0 }} />
+      <GoogleStripe heightMm={7} style={{ position: "absolute", left: 0, bottom: 0 }} />
+
+      <PinStarIcon widthMm={30} style={{ position: "absolute", right: "10mm", top: "12mm" }} />
+
+      <p
+        style={{
+          position: "absolute",
+          left: "14mm",
+          top: "14mm",
+          fontSize: "4.6mm",
+          fontWeight: 700,
+          color: "#5a6270",
+        }}
+      >
+        {companyName || store.title}
+      </p>
+
+      {/* タイトル */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: "38mm",
+          textAlign: "center",
+          padding: "0 12mm",
+          fontSize: "15.5mm",
+          fontWeight: 900,
+          lineHeight: 1.32,
+        }}
+      >
+        <TitleSegments text={subtitle || SUBTITLE_DEFAULT.google} />
+      </div>
+
+      <p
+        style={{
+          position: "absolute",
+          left: "20mm",
+          right: "20mm",
+          top: "86mm",
+          textAlign: "center",
+          fontSize: "4.3mm",
+          lineHeight: 1.85,
+          fontWeight: 600,
+          color: "#3d4450",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {bodyText}
+      </p>
+
+      {/* QR ＋ 2ステップ */}
+      <div style={{ position: "absolute", left: "14mm", top: "112mm" }}>
+        <div
+          style={{
+            width: "68mm",
+            backgroundColor: "white",
+            border: `0.8mm solid ${G_INK}`,
+            borderRadius: "3mm",
+            padding: "4mm",
+            textAlign: "center",
+          }}
+        >
+          <QrBox qr={qr} sizeMm={60} />
+          <p style={{ fontSize: "3.6mm", fontWeight: 800, marginTop: "1mm" }}>
+            Googleクチコミ投稿ページ
+          </p>
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          left: "88mm",
+          right: "14mm",
+          top: "116mm",
+          backgroundColor: "#fdf6d8",
+          border: `0.7mm solid ${G_INK}`,
+          borderRadius: "4mm",
+          padding: "10mm 6mm 6mm",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "-5mm",
+            transform: "translateX(-50%)",
+            backgroundColor: "white",
+            border: `0.7mm solid ${G_INK}`,
+            borderRadius: "5mm",
+            padding: "1.6mm 6mm",
+            fontSize: "4.4mm",
+            fontWeight: 900,
+            whiteSpace: "nowrap",
+          }}
+        >
+          かんたん2ステップ！
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "3mm" }}>
+          <div style={{ textAlign: "center", flex: 1 }}>
+            <PhoneQrIcon widthMm={26} color={G_INK} style={{ margin: "0 auto" }} />
+            <p style={{ fontSize: "3.5mm", fontWeight: 800, marginTop: "2mm" }}>
+              ①QRコードを読み取る
+            </p>
+          </div>
+          <svg viewBox="0 0 40 24" style={{ width: "14mm", height: "8.4mm", flexShrink: 0 }}>
+            <path
+              d="M2 12 h26"
+              stroke={G_RED}
+              strokeWidth="4"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <path d="M26 4 L38 12 L26 20 Z" fill={G_RED} />
+          </svg>
+          <div style={{ textAlign: "center", flex: 1 }}>
+            <PhoneStarsIcon widthMm={26} color={G_INK} style={{ margin: "0 auto" }} />
+            <p style={{ fontSize: "3.5mm", fontWeight: 800, marginTop: "2mm" }}>
+              ②星を選んで投稿
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 書き方の案内（吹き出し） */}
+      <div
+        style={{
+          position: "absolute",
+          left: "14mm",
+          right: "14mm",
+          top: "190mm",
+          display: "flex",
+          flexDirection: "column",
+          gap: "5mm",
+        }}
+      >
+        {G_TIPS.map((t, i) => (
+          <div
+            key={t.text}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "4mm",
+              flexDirection: i % 2 === 1 ? "row-reverse" : "row",
+            }}
+          >
+            <PersonBust
+              variant={t.variant}
+              skin="#f7d9c4"
+              hair={t.hair}
+              shirt={t.shirt}
+              widthMm={19}
+            />
+            <div
+              style={{
+                flex: 1,
+                border: `0.7mm solid ${G_INK}`,
+                borderRadius: "4mm",
+                backgroundColor: "white",
+                padding: "4mm 6mm",
+                display: "flex",
+                alignItems: "center",
+                gap: "4mm",
+              }}
+            >
+              <StarRow sizeMm={5.4} gapMm={1} />
+              <span style={{ fontSize: "5mm", fontWeight: 800, letterSpacing: "0.2mm" }}>
+                {t.text}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          left: "14mm",
+          right: "14mm",
+          bottom: "11mm",
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: "3.6mm",
+          fontWeight: 600,
+          color: "#5a6270",
+        }}
+      >
+        <span>お問い合わせ　{contactText || companyName || store.title}</span>
+        {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
+      </div>
+    </div>
+  )
+}
+
+/* ---------------------- ⑥ クチコミ専用・星 ---------------------- */
+
+function PosterGoogleStar({
+  store,
+  qr,
+  subtitle,
+  bodyText,
+  telFallback,
+  companyName,
+  contactText,
+  showTel,
+}: PosterProps) {
+  const steps = [
+    { n: 1, color: G_BLUE, title: "QRコードを読み取る", desc: "スマホのカメラをかざすだけ" },
+    { n: 2, color: G_YELLOW, title: "星の数を選ぶ", desc: "5段階で評価をお選びください" },
+    { n: 3, color: G_GREEN, title: "ひとこと添えて投稿", desc: "空欄のままでも投稿できます" },
+  ]
+  return (
+    <div
+      style={{
+        width: "210mm",
+        height: "296mm",
+        position: "relative",
+        backgroundColor: "white",
+        overflow: "hidden",
+        fontFamily: FONT_SANS,
+        color: G_INK,
+      }}
+    >
+      <GoogleStripe heightMm={4} style={{ position: "absolute", left: 0, top: 0 }} />
+      <GoogleStripe heightMm={4} style={{ position: "absolute", left: 0, bottom: 0 }} />
+
+      <p
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: "18mm",
+          textAlign: "center",
+          fontSize: "4.8mm",
+          fontWeight: 700,
+          color: "#5a6270",
+        }}
+      >
+        {companyName || store.title}
+      </p>
+
+      <StarRow
+        sizeMm={24}
+        gapMm={3}
+        style={{ position: "absolute", left: "50%", top: "30mm", transform: "translateX(-50%)" }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: "64mm",
+          textAlign: "center",
+          padding: "0 14mm",
+          fontSize: "14mm",
+          fontWeight: 900,
+          lineHeight: 1.34,
+        }}
+      >
+        <TitleSegments text={subtitle || SUBTITLE_DEFAULT.google} />
+      </div>
+
+      <p
+        style={{
+          position: "absolute",
+          left: "24mm",
+          right: "24mm",
+          top: "106mm",
+          textAlign: "center",
+          fontSize: "4.2mm",
+          lineHeight: 1.9,
+          fontWeight: 600,
+          color: "#3d4450",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {bodyText}
+      </p>
+
+      {/* QR */}
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "132mm",
+          transform: "translateX(-50%)",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            border: "0.6mm solid #d7dbe2",
+            borderRadius: "4mm",
+            padding: "5mm",
+            backgroundColor: "white",
+          }}
+        >
+          <QrBox qr={qr} sizeMm={64} />
+        </div>
+        <p style={{ fontSize: "4.2mm", fontWeight: 800, marginTop: "3mm" }}>
+          Googleのクチコミ投稿ページが開きます
+        </p>
+      </div>
+
+      {/* 3ステップ */}
+      <div
+        style={{
+          position: "absolute",
+          left: "14mm",
+          right: "14mm",
+          top: "222mm",
+          display: "flex",
+          gap: "4mm",
+        }}
+      >
+        {steps.map((s) => (
+          <div
+            key={s.n}
+            style={{
+              flex: 1,
+              border: "0.5mm solid #e1e5ec",
+              borderRadius: "3mm",
+              padding: "5mm 4mm",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "2.5mm" }}>
+              <StepNumber n={s.n} color={s.color} sizeMm={9} />
+            </div>
+            <p style={{ fontSize: "4mm", fontWeight: 800, lineHeight: 1.4 }}>{s.title}</p>
+            <p
+              style={{
+                fontSize: "3.2mm",
+                lineHeight: 1.6,
+                color: "#5a6270",
+                marginTop: "1.5mm",
+              }}
+            >
+              {s.desc}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          left: "14mm",
+          right: "14mm",
+          bottom: "10mm",
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: "3.6mm",
+          fontWeight: 600,
+          color: "#5a6270",
+        }}
+      >
+        <span>お問い合わせ　{contactText || companyName || store.title}</span>
+        {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
+      </div>
+    </div>
+  )
+}
+
+/* ---------------------- ⑦ クチコミ専用・シック ---------------------- */
+
+const CHIC_BG = "#16233a"
+const CHIC_GOLD = "#d9b370"
+
+function PosterGoogleChic({
+  store,
+  qr,
+  subtitle,
+  bodyText,
+  telFallback,
+  companyName,
+  contactText,
+  showTel,
+}: PosterProps) {
+  const steps = [
+    "スマートフォンのカメラでQRコードを読み取ってください",
+    "Googleのクチコミ投稿画面が開きます（アプリ不要）",
+    "星の数をお選びいただき、ひとことお寄せください",
+  ]
+  return (
+    <div
+      style={{
+        width: "210mm",
+        height: "296mm",
+        position: "relative",
+        backgroundColor: CHIC_BG,
+        overflow: "hidden",
+        fontFamily: FONT_SANS,
+        color: "white",
+      }}
+    >
+      {/* 細い金の枠 */}
+      <div
+        style={{
+          position: "absolute",
+          left: "8mm",
+          top: "8mm",
+          right: "8mm",
+          bottom: "8mm",
+          border: `0.4mm solid ${CHIC_GOLD}`,
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: "22mm",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "center", gap: "2mm", marginBottom: "5mm" }}>
+          {[G_BLUE, G_RED, G_YELLOW, G_GREEN].map((c) => (
+            <span
+              key={c}
+              style={{
+                width: "3mm",
+                height: "3mm",
+                borderRadius: "50%",
+                backgroundColor: c,
+                display: "inline-block",
+              }}
+            />
+          ))}
+        </div>
+        <p
+          style={{
+            fontSize: "4mm",
+            letterSpacing: "1.5mm",
+            fontWeight: 700,
+            color: CHIC_GOLD,
+          }}
+        >
+          GOOGLE クチコミ
+        </p>
+        <p style={{ fontSize: "5mm", fontWeight: 700, marginTop: "6mm" }}>
+          {companyName || store.title}
+        </p>
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: "62mm",
+          textAlign: "center",
+          padding: "0 18mm",
+          fontSize: "13mm",
+          fontWeight: 900,
+          lineHeight: 1.4,
+        }}
+      >
+        <TitleSegments text={subtitle || SUBTITLE_DEFAULT.google} />
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "104mm",
+          transform: "translateX(-50%)",
+        }}
+      >
+        <StarRow sizeMm={11} gapMm={2.5} color={CHIC_GOLD} />
+      </div>
+
+      <p
+        style={{
+          position: "absolute",
+          left: "26mm",
+          right: "26mm",
+          top: "122mm",
+          textAlign: "center",
+          fontSize: "4.2mm",
+          lineHeight: 2,
+          color: "#d5dae4",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {bodyText}
+      </p>
+
+      {/* QR（白カード） */}
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "152mm",
+          transform: "translateX(-50%)",
+          backgroundColor: "white",
+          borderRadius: "3mm",
+          padding: "6mm",
+          textAlign: "center",
+        }}
+      >
+        <QrBox qr={qr} sizeMm={58} />
+        <p style={{ fontSize: "3.6mm", fontWeight: 800, color: G_INK, marginTop: "2mm" }}>
+          クチコミ投稿ページ
+        </p>
+      </div>
+
+      {/* 手順 */}
+      <div
+        style={{
+          position: "absolute",
+          left: "26mm",
+          right: "26mm",
+          top: "232mm",
+          display: "flex",
+          flexDirection: "column",
+          gap: "3.5mm",
+        }}
+      >
+        {steps.map((s, i) => (
+          <div key={s} style={{ display: "flex", alignItems: "center", gap: "4mm" }}>
+            <StepNumber n={i + 1} color={CHIC_GOLD} sizeMm={7.5} textColor={CHIC_BG} />
+            <span style={{ fontSize: "3.9mm", lineHeight: 1.6, color: "#e7ebf2" }}>{s}</span>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          left: "18mm",
+          right: "18mm",
+          bottom: "14mm",
+          borderTop: `0.3mm solid ${CHIC_GOLD}`,
+          paddingTop: "3mm",
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: "3.5mm",
+          color: "#c9d1de",
+        }}
+      >
+        <span>お問い合わせ　{contactText || companyName || store.title}</span>
         {showTel && <span>TEL {store.primaryPhone || telFallback || "—"}</span>}
       </div>
     </div>
@@ -1202,9 +1950,14 @@ export default function DistributePage() {
   const [design, setDesign] = useState<PosterDesignKey>("pop")
   const [size, setSize] = useState<"A4" | "B5">("A4")
   const [textType, setTextType] = useState<"simple" | "detailed">("simple")
-  const [subtitle, setSubtitle] = useState("アンケート ご協力のお願い")
+  const [subtitle, setSubtitle] = useState<string>(SUBTITLE_DEFAULT.survey)
+  /** サブタイトルを手で直したか（直していなければQRの遷移先に応じて初期値を入れ替える） */
+  const [subtitleEdited, setSubtitleEdited] = useState(false)
   const [body, setBody] = useState("")
   const [telFallback, setTelFallback] = useState("")
+  /** ポスターに載せる会社名（初期値はGBPの登録名。手で直したときだけ上書きとして使う） */
+  const [companyName, setCompanyName] = useState("")
+  const [companyNameEdited, setCompanyNameEdited] = useState(false)
   /** お問い合わせ先の表記（空なら店舗名をそのまま使う） */
   const [contactText, setContactText] = useState("")
   /** フッターに電話番号を載せるか */
@@ -1282,6 +2035,39 @@ export default function DistributePage() {
     if (!target || target.length === 0) return []
     return targetStores.filter((st) => !target.includes(st.locationName))
   }, [qrTarget, currentSurvey, targetStores])
+
+  /**
+   * 会社名欄の初期値。店舗を1つだけ選んでいるときは、その店舗のGBP登録名を入れる。
+   * 複数店舗のときは空欄（各店舗の登録名がそのまま入る）。
+   */
+  const gbpDefaultName = targetStores.length === 1 ? targetStores[0].title : ""
+  useEffect(() => {
+    if (!companyNameEdited) setCompanyName(gbpDefaultName)
+  }, [gbpDefaultName, companyNameEdited])
+
+  /** QRの遷移先を変えたら、手を加えていないサブタイトルは既定文に入れ替える */
+  useEffect(() => {
+    if (!subtitleEdited) setSubtitle(SUBTITLE_DEFAULT[qrTarget])
+  }, [qrTarget, subtitleEdited])
+
+  /** クチコミ専用デザインを選んだままアンケートQRに戻したときは、共通デザインに戻す */
+  useEffect(() => {
+    if (POSTER_DESIGNS[design].target !== "both" && POSTER_DESIGNS[design].target !== qrTarget) {
+      setDesign("pop")
+    }
+  }, [qrTarget, design])
+
+  /**
+   * Googleクチコミへ飛ばす場合、クチコミ投稿用のリンクが未登録の店舗は
+   * Googleマップの検索結果に飛んでしまう（投稿画面が直接開かない）。
+   */
+  const noReviewLinkStores = useMemo(
+    () =>
+      qrTarget === "google"
+        ? targetStores.filter((st) => !st.newReviewUri && !st.placeId)
+        : [],
+    [qrTarget, targetStores]
+  )
 
   /** 対象外の店舗を、このアンケートの対象に追加する */
   const [addingScope, setAddingScope] = useState(false)
@@ -1397,7 +2183,16 @@ export default function DistributePage() {
       )
     : stores
 
-  const bodyText = body.trim() || (textType === "simple" ? BODY_SIMPLE : BODY_DETAILED)
+  /** 定型文はQRの遷移先に合わせる（クチコミなのに「アンケートにご回答」とは書かない） */
+  const defaultBody =
+    qrTarget === "google"
+      ? textType === "simple"
+        ? GOOGLE_BODY_SIMPLE
+        : GOOGLE_BODY_DETAILED
+      : textType === "simple"
+        ? BODY_SIMPLE
+        : BODY_DETAILED
+  const bodyText = body.trim() || defaultBody
   const qrLabel = qrTarget === "google" ? "クチコミ投稿はこちら" : "アンケート回答先"
   const checkItems = (() => {
     let items: string[] = []
@@ -1421,6 +2216,8 @@ export default function DistributePage() {
       subtitle,
       bodyText,
       telFallback,
+      // 手で直したときだけ上書きする（そのままなら各店舗のGBP登録名を使う）
+      companyName: companyNameEdited ? companyName.trim() : "",
       contactText,
       showTel,
       qrLabel,
@@ -1433,6 +2230,12 @@ export default function DistributePage() {
         <PosterMinimal {...props} />
       ) : design === "checklist" ? (
         <PosterChecklist {...props} />
+      ) : design === "gpop" ? (
+        <PosterGooglePop {...props} />
+      ) : design === "gstar" ? (
+        <PosterGoogleStar {...props} />
+      ) : design === "gchic" ? (
+        <PosterGoogleChic {...props} />
       ) : (
         <PosterInfo {...props} />
       )
@@ -1722,30 +2525,64 @@ export default function DistributePage() {
             </div>
           )}
 
+          {/* クチコミ投稿用リンクが無い店舗は、QRが投稿画面ではなく検索結果に飛ぶ */}
+          {noReviewLinkStores.length > 0 && (
+            <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3">
+              <p className="text-sm text-amber-900 font-bold">
+                選択中の{noReviewLinkStores.length}
+                店舗は、クチコミ投稿用のリンクが登録されていません
+              </p>
+              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                この店舗のQRは、クチコミの投稿画面ではなく
+                <b>Googleマップの検索結果</b>
+                に飛びます。店舗マスタの同期でプレイスIDが入ると、自動的に投稿画面へ直接飛ぶようになります。
+              </p>
+              <ul className="text-xs text-amber-800 mt-2 list-disc pl-5 space-y-0.5">
+                {noReviewLinkStores.slice(0, 8).map((st) => (
+                  <li key={st.locationName}>{st.title}</li>
+                ))}
+                {noReviewLinkStores.length > 8 && (
+                  <li>ほか {noReviewLinkStores.length - 8} 店舗</li>
+                )}
+              </ul>
+            </div>
+          )}
+
           {tab === "poster" ? (
             <>
               <div>
                 <p className="text-sm font-bold mb-2">デザイン選択</p>
+                {qrTarget === "google" && (
+                  <p className="text-xs text-gray-500 mb-2">
+                    「クチコミ専用」はGoogleのクチコミ投稿だけに絞ったデザインです（アンケートの案内は入りません）。
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
-                  {(Object.keys(POSTER_DESIGNS) as PosterDesignKey[]).map((k) => (
-                    <label
-                      key={k}
-                      className={`flex items-center gap-2 text-sm cursor-pointer border rounded px-3 py-2 ${
-                        design === k ? "border-[#4a90e2] bg-blue-50" : "hover:bg-gray-50"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        checked={design === k}
-                        onChange={() => setDesign(k)}
-                      />
-                      <span
-                        className="w-3 h-3 rounded-full inline-block"
-                        style={{ backgroundColor: POSTER_DESIGNS[k].swatch }}
-                      />
-                      {POSTER_DESIGNS[k].label}
-                    </label>
-                  ))}
+                  {(Object.keys(POSTER_DESIGNS) as PosterDesignKey[])
+                    .filter(
+                      (k) =>
+                        POSTER_DESIGNS[k].target === "both" ||
+                        POSTER_DESIGNS[k].target === qrTarget
+                    )
+                    .map((k) => (
+                      <label
+                        key={k}
+                        className={`flex items-center gap-2 text-sm cursor-pointer border rounded px-3 py-2 ${
+                          design === k ? "border-[#4a90e2] bg-blue-50" : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          checked={design === k}
+                          onChange={() => setDesign(k)}
+                        />
+                        <span
+                          className="w-3 h-3 rounded-full inline-block"
+                          style={{ backgroundColor: POSTER_DESIGNS[k].swatch }}
+                        />
+                        {POSTER_DESIGNS[k].label}
+                      </label>
+                    ))}
                 </div>
               </div>
               <div>
@@ -1760,7 +2597,9 @@ export default function DistributePage() {
                 </div>
               </div>
               <div>
-                <p className="text-sm font-bold mb-2">アンケートのご案内文タイプ</p>
+                <p className="text-sm font-bold mb-2">
+                  {qrTarget === "google" ? "クチコミのご案内文タイプ" : "アンケートのご案内文タイプ"}
+                </p>
                 <div className="flex gap-6">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
@@ -1782,15 +2621,63 @@ export default function DistributePage() {
               </div>
               <div>
                 <label className="block text-sm font-bold mb-1">
-                  サブタイトル（最大文字数：全角16文字）
+                  会社名（ポスターに載る表記）
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={companyName}
+                    onChange={(e) => {
+                      setCompanyName(e.target.value)
+                      setCompanyNameEdited(true)
+                    }}
+                    placeholder={
+                      targetStores.length === 0
+                        ? "店舗を選ぶとGBPの登録名が入ります"
+                        : "各店舗のGBP登録名が入ります"
+                    }
+                    className="w-full h-10 px-3 text-sm border rounded"
+                  />
+                  {companyNameEdited && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCompanyNameEdited(false)
+                        setCompanyName(gbpDefaultName)
+                      }}
+                      className="h-10 px-3 text-xs border rounded whitespace-nowrap hover:bg-gray-50"
+                    >
+                      登録名に戻す
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  初期値はGBP（Googleビジネスプロフィール）の登録名です。「本社」「◯◯グループ」など、掲示物用の表記に直したい場合はこちらを書き換えてください。
+                </p>
+                {companyNameEdited && companyName.trim() && targetStores.length > 1 && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    この表記は出力する{targetStores.length}
+                    店舗すべてに入ります。店舗ごとに名前を変えたい場合は、1店舗ずつ出力してください。
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">
+                  サブタイトル（最大文字数：全角20文字）
                 </label>
                 <input
                   type="text"
                   value={subtitle}
-                  maxLength={16}
-                  onChange={(e) => setSubtitle(e.target.value)}
+                  maxLength={20}
+                  onChange={(e) => {
+                    setSubtitle(e.target.value)
+                    setSubtitleEdited(true)
+                  }}
                   className="w-full h-10 px-3 text-sm border rounded"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  ポスターの大見出しです。スペースで区切ると、その位置で改行されます。
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-bold mb-1">
@@ -1801,7 +2688,7 @@ export default function DistributePage() {
                   maxLength={100}
                   rows={4}
                   onChange={(e) => setBody(e.target.value)}
-                  placeholder={textType === "simple" ? BODY_SIMPLE : BODY_DETAILED}
+                  placeholder={defaultBody}
                   className="w-full px-3 py-2 text-sm border rounded"
                 />
               </div>
@@ -1811,7 +2698,7 @@ export default function DistributePage() {
                   type="text"
                   value={contactText}
                   onChange={(e) => setContactText(e.target.value)}
-                  placeholder="空欄の場合は店舗名がそのまま入ります"
+                  placeholder="空欄の場合は上の会社名がそのまま入ります"
                   className="w-full h-10 px-3 text-sm border rounded"
                 />
                 <p className="text-xs text-gray-500 mt-1">
