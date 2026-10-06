@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2, AlertCircle, Printer, Star } from "lucide-react"
@@ -52,6 +52,8 @@ function DonutChart({ counts }: { counts: { label: string; count: number }[] }) 
 interface SurveyOption {
   id: number
   name: string
+  /** このアンケートに登録されている店舗。空なら全店舗を受け付ける設定 */
+  targetStores: string[] | null
 }
 interface QuestionStat {
   title: string
@@ -92,10 +94,13 @@ export default function SurveyResultsPage() {
     fetch("/api/surveys")
       .then((r) => r.json())
       .then((j) => {
-        const list = (j.surveys ?? []).map((s: { id: number; name: string }) => ({
-          id: s.id,
-          name: s.name,
-        }))
+        const list = (j.surveys ?? []).map(
+          (s: { id: number; name: string; targetStores?: string[] | null }) => ({
+            id: s.id,
+            name: s.name,
+            targetStores: s.targetStores ?? null,
+          })
+        )
         setSurveyList(list)
         if (list.length > 0) setSurveyId(list[0].id)
       })
@@ -134,6 +139,28 @@ export default function SurveyResultsPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  /**
+   * 店舗選択に出すのは、このアンケートに登録されている店舗だけ。
+   * 全店舗を並べると、そのアンケートを配っていない会社まで出てきてしまう。
+   * （対象店舗を設定していないアンケートは従来どおり全店舗を出す）
+   */
+  const currentSurvey = surveyList.find((s) => s.id === surveyId) ?? null
+  const selectableStores = useMemo(() => {
+    const target = currentSurvey?.targetStores
+    if (!target || target.length === 0) return stores
+    const titleOf = new Map(stores.map((s) => [s.locationName, s.title]))
+    return [...new Set(target)]
+      .map((ln) => ({ locationName: ln, title: titleOf.get(ln) ?? ln }))
+      .sort((a, b) => a.title.localeCompare(b.title, "ja"))
+  }, [currentSurvey, stores])
+
+  /** アンケートを切り替えたとき、対象外になった店舗の選択は解除する */
+  useEffect(() => {
+    if (!locationName) return
+    if (selectableStores.some((s) => s.locationName === locationName)) return
+    setLocationName("")
+  }, [selectableStores, locationName])
 
   const periodLabel = (() => {
     const to = new Date()
@@ -204,7 +231,7 @@ export default function SurveyResultsPage() {
               className="h-9 px-2 text-sm border rounded min-w-56"
             >
               <option value="">全店舗</option>
-              {stores.map((s) => (
+              {selectableStores.map((s) => (
                 <option key={s.locationName} value={s.locationName}>
                   {s.title}
                 </option>
@@ -232,7 +259,8 @@ export default function SurveyResultsPage() {
           {/* レポートヘッダー（GMOレポート風） */}
           <div className="bg-[#1a6db5] text-white px-5 py-3 font-bold">
             {locationName
-              ? stores.find((s) => s.locationName === locationName)?.title
+              ? (stores.find((s) => s.locationName === locationName)?.title ??
+                selectableStores.find((s) => s.locationName === locationName)?.title)
               : "全店舗"}
           </div>
           <div className="px-5 py-3 text-sm border-b">
