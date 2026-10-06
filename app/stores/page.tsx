@@ -357,8 +357,9 @@ export default function StoresPage() {
                           重複リスティング（対象外）
                         </span>
                       ) : s.hasVoiceOfMerchant === false ? (
-                        <span className="inline-block mt-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800">
-                          オーナー確認が必要（対象外）
+                        // 投稿できない店舗なので、重複リスティングと同じ赤で統一する
+                        <span className="inline-block mt-1 rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] text-red-700">
+                          オーナー確認が必要（投稿不可・対象外）
                         </span>
                       ) : null}
                     </td>

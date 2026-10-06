@@ -38,6 +38,9 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: https: blob:",
+      // HEIC変換(heic-to)が自前のWeb Workerをblob URLで起動するため許可する。
+      // 画面が固まらないよう変換を別スレッドで行うのに必要。
+      "worker-src 'self' blob:",
       "connect-src 'self' https://accounts.google.com https://*.googleapis.com",
       "frame-src https://accounts.google.com",
       "frame-ancestors 'none'",

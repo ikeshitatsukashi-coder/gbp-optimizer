@@ -76,7 +76,8 @@ export async function syncAllStores(accessToken: string): Promise<SyncResult> {
       result.accountsProcessed += 1
       result.locationsFetched += locations.length
       for (const l of locations) {
-        if (l.metadata?.hasVoiceOfMerchant === false) result.unverified += 1
+        // Google は false を省略して返すため、true 以外はすべて未確認として数える
+        if (l.metadata?.hasVoiceOfMerchant !== true) result.unverified += 1
         if (l.metadata?.duplicateLocation) result.duplicates += 1
       }
 
@@ -95,12 +96,19 @@ export async function syncAllStores(accessToken: string): Promise<SyncResult> {
           primaryCategory: l.categories?.primaryCategory?.displayName ?? null,
           placeId: l.metadata?.placeId ?? null,
           newReviewUri: l.metadata?.newReviewUri ?? null,
-          // オーナー確認・重複の判定材料。Google が返さなかった場合は null（=不明）にして
-          // 「未確認」と決めつけない（誤って全店舗が対象外になるのを防ぐ）
-          hasVoiceOfMerchant:
-            typeof l.metadata?.hasVoiceOfMerchant === "boolean"
-              ? l.metadata.hasVoiceOfMerchant
-              : null,
+          /**
+           * オーナー確認（Voice of Merchant）。
+           *
+           * readMask に metadata を入れて取得しているが、Google の JSON は
+           * false のフィールドを省略して返す（protobuf の既定値は出力されない）。
+           * そのため「hasVoiceOfMerchant が無い＝オーナー確認が取れていない(false)」。
+           * 以前は無い場合を null（不明）として運用対象に含めていたため、
+           * 未認証の重複リスティングが店舗セレクタに並び、投稿エラーの原因になっていた。
+           *
+           * オーナー確認が取れている店舗は placeId も newReviewUri も必ず返るため、
+           * metadata ごと返らないケースも「確認が取れていない」として扱う。
+           */
+          hasVoiceOfMerchant: l.metadata?.hasVoiceOfMerchant === true,
           duplicateOf: l.metadata?.duplicateLocation ?? null,
           lastSyncedAt: new Date(),
           // status/industry/autoReply/autoFlag は default を使う（新規時のみ）

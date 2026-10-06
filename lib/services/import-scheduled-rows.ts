@@ -2,6 +2,7 @@ import { db } from "@/lib/db"
 import { companies, scheduledPosts, stores } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { normalizeCoreName, normalizeSearchText } from "@/lib/search-normalize"
+import { isOperational } from "@/lib/store-scope"
 
 /**
  * 予約投稿の一括インポート共通ロジック。
@@ -242,9 +243,28 @@ export async function importScheduledRows(
       locationName: stores.locationName,
       title: stores.title,
       companyCode: companies.code,
+      hasVoiceOfMerchant: stores.hasVoiceOfMerchant,
+      duplicateOf: stores.duplicateOf,
     })
     .from(stores)
     .leftJoin(companies, eq(stores.companyId, companies.id))
+
+  /**
+   * 運用対象（オーナー確認済み・重複でない）の店舗。
+   * 同じ社名の未認証リスティングがGBPに残っていると店舗名で特定できなくなるため、
+   * 候補が複数あるときは運用対象だけに絞って判定する。
+   */
+  const operationalSet = new Set(
+    allStores.filter((s) => isOperational(s)).map((s) => s.locationName)
+  )
+  const nonOperationalReason = new Map<string, string>()
+  for (const s of allStores) {
+    if (operationalSet.has(s.locationName)) continue
+    nonOperationalReason.set(
+      s.locationName,
+      s.duplicateOf ? "重複リスティング" : "オーナー確認が取れていません"
+    )
+  }
   // 同名の店舗が実在する（例: 「株式会社国商運輸 伊勢崎営業所」が2件）ため、
   // 店舗名は必ず配列で持ち、1件に絞れない場合は特定せずエラーにする。
   const byTitle = new Map<string, string[]>()
@@ -323,7 +343,13 @@ export async function importScheduledRows(
       if (!set) return { locationName: null, unknownCompany: companyCodeRaw.trim() }
       scope = set
     }
-    const narrow = (arr: string[]): string[] => (scope ? arr.filter((n) => scope!.has(n)) : arr)
+    const narrow = (arr: string[]): string[] => {
+      const inScope = scope ? arr.filter((n) => scope!.has(n)) : arr
+      if (inScope.length <= 1) return inScope
+      // 同名が複数あるときは運用対象を優先（未認証の重複リスティングを除く）
+      const operational = inScope.filter((n) => operationalSet.has(n))
+      return operational.length > 0 ? operational : inScope
+    }
 
     // 3) 店舗名で照合（1件に絞れたときだけ採用）
     if (typeof storeNameRaw === "string" && storeNameRaw.trim()) {
@@ -460,6 +486,20 @@ export async function importScheduledRows(
                 .join(" / ")}。GBP側で店舗名を変更した場合は、店舗マスタの「Googleから同期」を実行してください`
             : `店舗が特定できません: 「${shown}」（店舗マスタに該当する店舗名がありません。GBP側で改称した場合は「Googleから同期」を実行してください）`
       errors.push({ rowIndex, error, rowData: row })
+      return
+    }
+
+    // 運用対象外の店舗は、予約しても投稿時にGoogle側で必ず失敗するため取り込まない
+    const notOperational = nonOperationalReason.get(locationName)
+    if (notOperational) {
+      errors.push({
+        rowIndex,
+        error:
+          `「${titleOf.get(locationName) ?? locationName}」は${notOperational}のため投稿できません` +
+          `（ID: ${locationName.replace(/^locations\//, "")}）。` +
+          `店舗マスタで運用対象の店舗を確認し、そちらの店舗IDを指定してください`,
+        rowData: row,
+      })
       return
     }
 

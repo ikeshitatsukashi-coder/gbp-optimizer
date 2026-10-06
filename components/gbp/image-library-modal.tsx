@@ -38,7 +38,7 @@ interface UploadingFile {
   /** 連続アップロードで一覧が増えていくため、行の特定は添字ではなくIDで行う */
   id: string
   name: string
-  status: "resizing" | "uploading" | "done" | "error"
+  status: "resizing" | "converting" | "uploading" | "done" | "error"
   error?: string
 }
 
@@ -234,8 +234,11 @@ export function ImageLibraryModal({
    */
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
+    // HEIC/HEIF は環境によって type が空で渡ってくるため拡張子でも判定する
+    const looksImage = (f: File) =>
+      f.type.startsWith("image/") || /\.(heic|heif|hif)$/i.test(f.name)
     const list = Array.from(files)
-      .filter((f) => f.type.startsWith("image/"))
+      .filter(looksImage)
       .slice(0, mode === "manage" ? 30 : maxCount)
     if (list.length === 0) {
       setError("画像ファイルを選択してください")
@@ -256,7 +259,11 @@ export function ImageLibraryModal({
       const file = list[i]
       const id = batch[i].id
       try {
-        const resized = await resizeImageForGbp(file)
+        const resized = await resizeImageForGbp(file, () =>
+          setUploads((prev) =>
+            prev.map((u) => (u.id === id ? { ...u, status: "converting" } : u))
+          )
+        )
         setUploads((prev) =>
           prev.map((u) => (u.id === id ? { ...u, status: "uploading" } : u))
         )
@@ -440,7 +447,7 @@ export function ImageLibraryModal({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.heic,.heif"
                     multiple
                     className="hidden"
                     onChange={async (e) => {
@@ -474,7 +481,9 @@ export function ImageLibraryModal({
                       <span className="text-xs text-gray-500 whitespace-nowrap">
                         {u.status === "resizing"
                           ? "リサイズ中…"
-                          : u.status === "uploading"
+                          : u.status === "converting"
+                            ? "HEICを変換中…"
+                            : u.status === "uploading"
                             ? "アップロード中…"
                             : u.status === "done"
                               ? "完了"

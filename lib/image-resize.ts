@@ -2,6 +2,7 @@
  * ブラウザ側で画像を GBP 向けにリサイズするユーティリティ。
  * - 最大 2540×1430 に収まるよう縮小（アスペクト比維持・拡大はしない）
  * - JPEG (q=0.85) に変換してファイルサイズも抑える
+ * - iPhone の HEIC/HEIF は、ブラウザが読めないので先に JPEG へ変換する
  * - サーバー処理不要（コストゼロ）
  */
 
@@ -37,15 +38,92 @@ function drawScaled(bitmap: ImageBitmap, width: number, height: number): HTMLCan
   return canvas
 }
 
-export async function resizeImageForGbp(file: File): Promise<ResizedImage> {
-  let bitmap: ImageBitmap
+/** HEIF系のブランド（ftypボックスの4文字）。iPhoneの写真は heic / heix が多い */
+const HEIF_BRANDS = [
+  "heic",
+  "heix",
+  "heim",
+  "heis",
+  "hevc",
+  "hevx",
+  "hevm",
+  "hevs",
+  "mif1",
+  "msf1",
+]
+
+/**
+ * HEIC/HEIF かどうか。
+ * 拡張子やMIMEは環境によって空になることがあるため、最後は先頭バイトで判定する。
+ */
+export async function isHeicFile(file: File): Promise<boolean> {
+  if (/\.(heic|heif|hif)$/i.test(file.name)) return true
+  if (/^image\/(heic|heif)/i.test(file.type)) return true
   try {
-    bitmap = await createImageBitmap(file)
+    const head = new Uint8Array(await file.slice(0, 16).arrayBuffer())
+    if (head.length < 12) return false
+    const ascii = (from: number, to: number) =>
+      String.fromCharCode(...head.slice(from, to))
+    if (ascii(4, 8) !== "ftyp") return false
+    return HEIF_BRANDS.includes(ascii(8, 12).toLowerCase())
   } catch {
-    throw new Error(
-      "この画像形式は読み込めませんでした（HEIC等）。JPEGまたはPNGでお試しください。"
-    )
+    return false
   }
+}
+
+/** 画像の向き（EXIF）を反映して読み込む。未対応ブラウザでは指定なしで読み直す */
+async function bitmapFrom(blob: Blob): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(blob, { imageOrientation: "from-image" })
+  } catch {
+    return await createImageBitmap(blob)
+  }
+}
+
+/**
+ * 画像を ImageBitmap にする。
+ * HEIC/HEIF はブラウザが直接デコードできない（Safari を除く）ため、
+ * 必要になったときだけ変換ライブラリを読み込んで JPEG にしてから扱う。
+ * ※ heic-to は LGPL-3.0。社内ツールでの利用のため、改変せずそのまま読み込む。
+ */
+async function decodeToBitmap(
+  file: File,
+  onConvertStart?: () => void
+): Promise<ImageBitmap> {
+  try {
+    return await bitmapFrom(file)
+  } catch {
+    // 下のHEIC変換にフォールバックする
+  }
+
+  if (await isHeicFile(file)) {
+    onConvertStart?.()
+    let jpeg: Blob
+    try {
+      const { heicTo } = await import("heic-to")
+      jpeg = await heicTo({ blob: file, type: "image/jpeg", quality: 0.92 })
+    } catch {
+      throw new Error(
+        "HEIC画像の変換に失敗しました。iPhoneの「設定 → カメラ → フォーマット」を" +
+          "「互換性優先」にするか、JPEGに書き出してからお試しください。"
+      )
+    }
+    try {
+      return await bitmapFrom(jpeg)
+    } catch {
+      throw new Error("HEIC画像を変換できましたが、読み込みに失敗しました。")
+    }
+  }
+
+  throw new Error("この画像形式は読み込めませんでした。JPEG・PNG・HEICでお試しください。")
+}
+
+export async function resizeImageForGbp(
+  file: File,
+  /** HEICの変換を始めたときに呼ばれる（画面に「変換中」を出すため） */
+  onConvertStart?: () => void
+): Promise<ResizedImage> {
+  const bitmap = await decodeToBitmap(file, onConvertStart)
   const { width: ow, height: oh } = bitmap
 
   // 収まる倍率を計算（拡大はしない）

@@ -57,7 +57,7 @@ function SurveyBuilder() {
 
   // 店舗リスト
   useEffect(() => {
-    fetch("/api/stores?status=active&limit=2000")
+    fetch("/api/stores?status=active&scope=operational&limit=2000")
       .then((r) => r.json())
       .then((j) =>
         setStores(
