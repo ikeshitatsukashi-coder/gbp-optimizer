@@ -61,6 +61,29 @@ export async function GET() {
           responses: { "200": { description: "クチコミリスト" } },
         },
       },
+      "/api/ext/upload": {
+        post: {
+          summary: "投稿用画像のアップロード（公開URLを返す）",
+          description:
+            "予約投稿の mediaUrls に入れる画像を置く。保存先は店舗の会社フォルダ。4MBまで・画像のみ。",
+          requestBody: {
+            required: true,
+            content: {
+              "multipart/form-data": {
+                schema: {
+                  type: "object",
+                  required: ["file", "locationId"],
+                  properties: {
+                    file: { type: "string", format: "binary" },
+                    locationId: { type: "string", description: "locations/xxx の xxx" },
+                  },
+                },
+              },
+            },
+          },
+          responses: { "200": { description: "{ url, folder }" } },
+        },
+      },
       "/api/ext/scheduled-posts": {
         get: {
           summary: "予約投稿の一覧",
