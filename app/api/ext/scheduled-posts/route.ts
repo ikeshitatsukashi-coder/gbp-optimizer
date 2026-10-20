@@ -100,6 +100,8 @@ export async function POST(request: Request) {
     postType?: string
     mediaUrls?: string[]
     draft?: boolean
+    /** ボタン（最新情報のみ）。LEARN_MORE（詳細）か SIGN_UP（登録）と https のURL */
+    callToAction?: { actionType?: string; url?: string }
   }
   try {
     body = await request.json()
@@ -153,6 +155,24 @@ export async function POST(request: Request) {
       ? body.postType.toUpperCase()
       : "STANDARD"
 
+  let callToAction: { actionType: string; url: string } | null = null
+  if (body.callToAction) {
+    const t = (body.callToAction.actionType ?? "").toUpperCase()
+    let ok = false
+    try {
+      ok = new URL(body.callToAction.url ?? "").protocol === "https:"
+    } catch {
+      ok = false
+    }
+    if (!["LEARN_MORE", "SIGN_UP"].includes(t) || !ok || postType === "VIDEO") {
+      return NextResponse.json(
+        { error: "callToAction は最新情報の投稿にだけ、LEARN_MORE か SIGN_UP と https のURLで指定してください" },
+        { status: 400 }
+      )
+    }
+    callToAction = { actionType: t, url: body.callToAction.url! }
+  }
+
   // 動画の予約：その店舗のフォルダに置いた動画URLが1つだけ必要
   if (postType === "VIDEO") {
     const url = Array.isArray(body.mediaUrls) ? body.mediaUrls[0] : undefined
@@ -178,6 +198,7 @@ export async function POST(request: Request) {
             ? body.mediaUrls.slice(0, 1)
             : null,
         status: body.draft ? "draft" : "pending",
+        callToAction,
       })
       .returning({ id: scheduledPosts.id })
 

@@ -804,3 +804,43 @@ export type SurveyResponse = typeof surveyResponses.$inferSelect
 export type SurveyReview = typeof surveyReviews.$inferSelect
 export type ShareLink = typeof shareLinks.$inferSelect
 export type ReviewRequest = typeof reviewRequests.$inferSelect
+
+/* -------------------------------------------------------------------------- */
+/*                  計測リンク（外部ツールの動画ごとのクリック数）                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 計測リンク：/api/public/r/<token> を開くとクリックを数えて target_url に転送する。
+ * 外部ツール（採用動画の自動生成）が、動画ごとの「最新情報」投稿のボタンに付け、
+ * どの動画（label＝管理ID）から何人が応募先へ進んだかを数える。Google は動画ごとの数字を返さないため。
+ */
+export const trackedLinks = pgTable(
+  "tracked_links",
+  {
+    id: serial("id").primaryKey(),
+    /** URLに入る推測できない鍵 */
+    token: varchar("token", { length: 40 }).notNull().unique(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** 外部ツール側の管理ID（例 C01-G003） */
+    label: varchar("label", { length: 100 }).notNull(),
+    /** 転送先（https のみ） */
+    targetUrl: text("target_url").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("tracked_links_location_idx").on(table.locationName)]
+)
+
+/** 計測リンクの日別クリック数（日本時間の日付） */
+export const trackedLinkClicks = pgTable(
+  "tracked_link_clicks",
+  {
+    linkId: integer("link_id")
+      .notNull()
+      .references(() => trackedLinks.id, { onDelete: "cascade" }),
+    day: varchar("day", { length: 10 }).notNull(),
+    clicks: integer("clicks").notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.linkId, table.day] })]
+)

@@ -109,6 +109,30 @@ export async function GET() {
           responses: { "200": { description: "{ pathname, uploadUrl, headers, folder }" } },
         },
       },
+      "/api/ext/links": {
+        post: {
+          summary: "計測リンクを作る（動画ごとのクリック数を数える）",
+          description: "/api/public/r/<token> を開くとクリックを日別に数えて targetUrl へ転送する。同じ店舗・label・転送先なら既存を返す。",
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["locationId", "label", "targetUrl"], properties: { locationId: { type: "string" }, label: { type: "string", description: "管理ID（英数字・-・_）" }, targetUrl: { type: "string", description: "https のみ" } } } } } },
+          responses: { "200": { description: "{ token, url }" } },
+        },
+        get: {
+          summary: "店舗の計測リンクとクリック数（日別）",
+          parameters: [{ name: "locationId", in: "query", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "{ links: [{ label, url, targetUrl, total, daily }] }" } },
+        },
+      },
+      "/api/ext/media-stats": {
+        get: {
+          summary: "写真・動画の一覧と、店舗の日別表示回数（読み取り専用）",
+          description: "Google は写真・動画ごとの閲覧数を返さない（viewCount は null）。店舗の表示回数は数日遅れ。",
+          parameters: [
+            { name: "locationId", in: "query", required: true, schema: { type: "string" } },
+            { name: "since", in: "query", required: true, schema: { type: "string", format: "date" } },
+          ],
+          responses: { "200": { description: "{ media, impressions, range }" } },
+        },
+      },
       "/api/ext/scheduled-posts": {
         get: {
           summary: "予約投稿の一覧",
@@ -136,6 +160,7 @@ export async function GET() {
                     postType: { type: "string", enum: ["STANDARD", "EVENT", "OFFER", "ALERT", "VIDEO"], description: "VIDEO は店舗の写真・動画欄に動画を載せる予約（mediaUrls に /api/ext/upload-token で置いた動画URLを1つ）" },
                     mediaUrls: { type: "array", items: { type: "string" }, maxItems: 10 },
                     draft: { type: "boolean" },
+                    callToAction: { type: "object", description: "最新情報のボタン。{ actionType: LEARN_MORE|SIGN_UP, url: https }", properties: { actionType: { type: "string" }, url: { type: "string" } } },
                   },
                 },
               },
