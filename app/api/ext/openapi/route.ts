@@ -84,6 +84,31 @@ export async function GET() {
           responses: { "200": { description: "{ url, folder }" } },
         },
       },
+      "/api/ext/upload-token": {
+        post: {
+          summary: "動画を直接置くための書き込み許可（10分有効）",
+          description:
+            "動画は大きいためサーバーを通さず、返した uploadUrl に headers を付けて PUT する。保存先は店舗の会社フォルダ（post-videos/）。mp4/mov・75MBまで。PUT の応答の url を予約（postType=VIDEO）の mediaUrls に入れる。",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["locationId", "contentType", "size"],
+                  properties: {
+                    locationId: { type: "string", description: "locations/xxx の xxx" },
+                    filename: { type: "string" },
+                    contentType: { type: "string", enum: ["video/mp4", "video/quicktime"] },
+                    size: { type: "integer", description: "バイト数（75MBまで）" },
+                  },
+                },
+              },
+            },
+          },
+          responses: { "200": { description: "{ pathname, uploadUrl, headers, folder }" } },
+        },
+      },
       "/api/ext/scheduled-posts": {
         get: {
           summary: "予約投稿の一覧",
@@ -108,7 +133,7 @@ export async function GET() {
                     storeName: { type: "string", description: "店舗名の完全一致（locationName の代わり）" },
                     scheduledFor: { type: "string", format: "date-time" },
                     summary: { type: "string", maxLength: 1500 },
-                    postType: { type: "string", enum: ["STANDARD", "EVENT", "OFFER", "ALERT"] },
+                    postType: { type: "string", enum: ["STANDARD", "EVENT", "OFFER", "ALERT", "VIDEO"], description: "VIDEO は店舗の写真・動画欄に動画を載せる予約（mediaUrls に /api/ext/upload-token で置いた動画URLを1つ）" },
                     mediaUrls: { type: "array", items: { type: "string" }, maxItems: 10 },
                     draft: { type: "boolean" },
                   },

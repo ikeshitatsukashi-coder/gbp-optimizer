@@ -46,6 +46,21 @@ async function executeOne(
   }
 ): Promise<{ ok: boolean; error?: string; result?: unknown }> {
   const client = createGmbClient(accessToken)
+  // 動画は「最新情報」には付けられないため、店舗の「写真・動画」欄に載せる
+  if (post.postType === "VIDEO") {
+    const url = post.mediaUrls?.[0]
+    if (!url) return { ok: false, error: "動画URLがありません" }
+    try {
+      const result = await client.createMedia(post.accountName, post.locationName, {
+        mediaFormat: "VIDEO",
+        sourceUrl: url,
+        description: post.summary.slice(0, 1000),
+      })
+      return { ok: true, result }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
   const body: Record<string, unknown> = {
     languageCode: "ja",
     summary: post.summary,

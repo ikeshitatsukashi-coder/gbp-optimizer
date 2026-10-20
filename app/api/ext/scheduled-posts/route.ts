@@ -5,6 +5,8 @@ import { eq, sql } from "drizzle-orm"
 import { verifyApiKey } from "@/lib/services/api-key-auth"
 import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
+import { resolveStoreScope } from "@/lib/services/image-scope"
+import { isOwnVideoUrl } from "@/lib/services/video-upload"
 
 /**
  * 予約投稿の一覧・作成（APIキー認証）
@@ -12,6 +14,10 @@ import { checkRateLimit, getClientId } from "@/lib/rate-limit"
  * ★スコープ注: このエンドポイントは DB に「予約」を登録するだけで、
  *   Google への実投稿は行わない。実行は従来どおりツール内の
  *   「期日到来分を今すぐ実行」ボタンから人間が行う。
+ *
+ * postType="VIDEO" は「最新情報」ではなく、店舗の「写真・動画」欄に動画を1本載せる予約。
+ *   mediaUrls[0] に /api/ext/upload-token 経由で置いた動画URL（その店舗のフォルダ）を1つ渡す。
+ *   summary は動画の説明（管理用。Google には説明として送る）。
  */
 
 export async function GET(request: Request) {
@@ -67,7 +73,7 @@ export async function GET(request: Request) {
   }
 }
 
-const VALID_POST_TYPES = new Set(["STANDARD", "EVENT", "OFFER", "ALERT"])
+const VALID_POST_TYPES = new Set(["STANDARD", "EVENT", "OFFER", "ALERT", "VIDEO"])
 
 export async function POST(request: Request) {
   const rl = checkRateLimit(`ext-sp-create:${getClientId(request)}`, {
@@ -143,6 +149,18 @@ export async function POST(request: Request) {
     body.postType && VALID_POST_TYPES.has(body.postType.toUpperCase())
       ? body.postType.toUpperCase()
       : "STANDARD"
+
+  // 動画の予約：その店舗のフォルダに置いた動画URLが1つだけ必要
+  if (postType === "VIDEO") {
+    const url = Array.isArray(body.mediaUrls) ? body.mediaUrls[0] : undefined
+    const scope = await resolveStoreScope(locationName.replace(/^locations\//, ""))
+    if (!url || !scope.folder || !isOwnVideoUrl(url, scope.folder)) {
+      return NextResponse.json(
+        { error: "動画の予約には、/api/ext/upload-token でこの店舗のフォルダに置いた動画URLを mediaUrls に1つ指定してください" },
+        { status: 400 }
+      )
+    }
+  }
 
   try {
     const [created] = await db

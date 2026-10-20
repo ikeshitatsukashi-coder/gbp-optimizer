@@ -380,7 +380,7 @@ export default function ScheduledPostsPage() {
               <div className="flex items-center gap-3 flex-wrap mb-2">
                 <span className="text-sm font-medium">{p.storeName}</span>
                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                  {POST_TYPE_LABELS[p.postType] ?? p.postType}
+                  {p.postType === "VIDEO" ? "動画（写真・動画欄）" : (POST_TYPE_LABELS[p.postType] ?? p.postType)}
                 </span>
                 <span
                   className={`text-xs px-2 py-0.5 rounded ${STATUS_COLORS[p.status] ?? "bg-gray-100"}`}

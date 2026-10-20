@@ -244,5 +244,27 @@ export function createGmbClient(accessToken: string) {
     async listMedia(accountName: string, locationName: string) {
       return fetchApi(buildV4Path(accountName, locationName, "media"))
     },
+
+    /**
+     * Add a photo/video to the location's media (v4)。
+     * Google が sourceUrl から取りに来るので、公開URLであること。
+     * 動画は「写真・動画」欄に載る（最新情報の投稿には動画を付けられない）。
+     */
+    async createMedia(
+      accountName: string,
+      locationName: string,
+      media: { mediaFormat: "PHOTO" | "VIDEO"; sourceUrl: string; category?: string; description?: string }
+    ) {
+      const body: Record<string, unknown> = {
+        mediaFormat: media.mediaFormat,
+        sourceUrl: media.sourceUrl,
+        locationAssociation: { category: media.category ?? "ADDITIONAL" },
+      }
+      if (media.description) body.description = media.description
+      return fetchApi(buildV4Path(accountName, locationName, "media"), {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+    },
   }
 }
