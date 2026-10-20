@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   try {
     const rows = await db.execute(sql`
       SELECT p.id, p.location_name, s.title AS store_name, p.scheduled_for,
-             p.post_type, p.summary, p.media_urls, p.status, p.executed_at
+             p.post_type, p.summary, p.media_urls, p.status, p.executed_at, p.result, p.error_message
       FROM scheduled_posts p
       INNER JOIN stores s ON s.location_name = p.location_name
       WHERE 1=1
@@ -66,6 +66,9 @@ export async function GET(request: Request) {
         executedAt: r.executed_at
           ? new Date(r.executed_at as string | Date).toISOString()
           : null,
+        // Google 側の登録名（動画なら accounts/…/media/…）。成果の取り込みで投稿と結び付けるのに使う
+        resultName: (r.result as { name?: string } | null)?.name ?? null,
+        errorMessage: r.error_message ?? null,
       })),
     })
   } catch (e) {

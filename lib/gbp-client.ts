@@ -241,8 +241,10 @@ export function createGmbClient(accessToken: string) {
     /**
      * List media items (photos/videos) (v4)
      */
-    async listMedia(accountName: string, locationName: string) {
-      return fetchApi(buildV4Path(accountName, locationName, "media"))
+    async listMedia(accountName: string, locationName: string, pageToken?: string) {
+      // 既存の呼び出し（ページ指定なし）は従来どおりのリクエストのまま
+      const q = pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : ""
+      return fetchApi(buildV4Path(accountName, locationName, "media") + q)
     },
 
     /**
