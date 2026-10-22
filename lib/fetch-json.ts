@@ -14,6 +14,8 @@ export interface FetchJsonResult<T = Record<string, unknown>> {
   status: number
   data: T | null
   error: string | null
+  /** 429 のときにサーバーが指定した待ち時間（秒）。無ければ undefined */
+  retryAfter?: number
 }
 
 export async function fetchJson<T = Record<string, unknown>>(
@@ -32,6 +34,8 @@ export async function fetchJson<T = Record<string, unknown>>(
     }
   }
 
+  const retryAfterRaw = res.headers.get("retry-after")
+  const retryAfter = retryAfterRaw ? Number(retryAfterRaw) : undefined
   const text = await res.text()
   let data: T | null = null
   try {
@@ -51,12 +55,15 @@ export async function fetchJson<T = Record<string, unknown>>(
       (typeof d.error === "string" && d.error) ||
       (typeof d.detail === "string" && d.detail) ||
       null
-    if (msg) return { ok: res.ok, status: res.status, data, error: res.ok ? null : msg }
+    if (msg)
+      return { ok: res.ok, status: res.status, data, error: res.ok ? null : msg, retryAfter }
   }
 
   // JSON でないエラー応答（プラットフォームのHTML等）を status で翻訳
   const friendly =
-    res.status === 413
+    res.status === 429
+      ? "短時間に送りすぎたため、サーバーが受け付けを一時的に止めています。"
+      : res.status === 413
       ? "送信データが大きすぎます（画像は自動リサイズしていますが、枚数を減らすか小さい画像でお試しください）。"
       : res.status === 504 || res.status === 408
         ? "処理がタイムアウトしました。時間をおいて再試行してください。"
@@ -66,7 +73,7 @@ export async function fetchJson<T = Record<string, unknown>>(
             ? `サーバーエラーが発生しました（HTTP ${res.status}）。`
             : `エラーが発生しました（HTTP ${res.status}）。`
 
-  return { ok: false, status: res.status, data, error: friendly }
+  return { ok: false, status: res.status, data, error: friendly, retryAfter }
 }
 
 /**

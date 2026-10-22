@@ -27,9 +27,11 @@ export async function POST(request: Request) {
   const denied = await requireRole("editor")
   if (denied) return denied
 
+  // 画像アーカイブへは一度に100枚以上まとめて上げることがあるため、
+  // 暴走を止める目的は保ちつつ上限を引き上げている（超過時は画面側が待って再送する）
   const rl = checkRateLimit(`upload:${getClientId(request)}`, {
     windowMs: 60_000,
-    max: 60,
+    max: 300,
   })
   if (!rl.allowed) {
     return NextResponse.json(

@@ -38,7 +38,9 @@ interface UploadingFile {
   /** 連続アップロードで一覧が増えていくため、行の特定は添字ではなくIDで行う */
   id: string
   name: string
-  status: "resizing" | "converting" | "uploading" | "done" | "error"
+  status: "resizing" | "converting" | "uploading" | "waiting" | "done" | "error"
+  /** 429で待機中のときの残り秒数 */
+  waitSec?: number
   error?: string
 }
 
@@ -237,9 +239,9 @@ export function ImageLibraryModal({
     // HEIC/HEIF は環境によって type が空で渡ってくるため拡張子でも判定する
     const looksImage = (f: File) =>
       f.type.startsWith("image/") || /\.(heic|heif|hif)$/i.test(f.name)
-    const list = Array.from(files)
-      .filter(looksImage)
-      .slice(0, mode === "manage" ? 30 : maxCount)
+    // 画像アーカイブ（manage）は枚数無制限。投稿への添付だけ Google の上限に合わせる
+    const picked = Array.from(files).filter(looksImage)
+    const list = mode === "manage" ? picked : picked.slice(0, maxCount)
     if (list.length === 0) {
       setError("画像ファイルを選択してください")
       return
@@ -271,10 +273,22 @@ export function ImageLibraryModal({
         fd.append("file", new File([resized.blob], resized.fileName, { type: "image/jpeg" }))
         // 店舗ごとのフォルダに保存するため店舗IDを一緒に送る
         if (locationId) fd.append("locationId", locationId)
-        const { ok, data, error } = await fetchJson<{ url: string }>("/api/upload", {
-          method: "POST",
-          body: fd,
-        })
+
+        // 大量に連続アップロードするとサーバーが一時的に受付を止める(429)。
+        // エラーにせず、指定された時間だけ待ってから自動で送り直す。
+        let res = await fetchJson<{ url: string }>("/api/upload", { method: "POST", body: fd })
+        for (let retry = 0; retry < 5 && res.status === 429; retry++) {
+          const waitSec = Math.min(Math.max(res.retryAfter ?? 20, 5), 60)
+          setUploads((prev) =>
+            prev.map((u) => (u.id === id ? { ...u, status: "waiting", waitSec } : u))
+          )
+          await new Promise((r) => setTimeout(r, waitSec * 1000))
+          setUploads((prev) =>
+            prev.map((u) => (u.id === id ? { ...u, status: "uploading" } : u))
+          )
+          res = await fetchJson<{ url: string }>("/api/upload", { method: "POST", body: fd })
+        }
+        const { ok, data, error } = res
         if (!ok || !data?.url) throw new Error(error ?? "アップロードに失敗しました")
 
         urls.push(data.url)
@@ -459,7 +473,7 @@ export function ImageLibraryModal({
                   />
                   <p className="text-xs text-gray-500">
                     {mode === "manage"
-                      ? "複数選択可（一度に最大30枚）。アップロード後はアーカイブに保存され、投稿時にいつでも使えます。"
+                      ? "複数選択可（枚数制限なし）。アップロード後はアーカイブに保存され、投稿時にいつでも使えます。"
                       : `複数選択可（最大${maxCount}枚）。2540×1430px を超える画像は自動でリサイズされます。`}
                   </p>
                 </div>
@@ -467,30 +481,49 @@ export function ImageLibraryModal({
 
               {/* Upload progress */}
               {uploads.length > 0 && (
-                <div className="border rounded divide-y">
-                  {uploads.map((u) => (
-                    <div key={u.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                      {u.status === "done" ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                      ) : u.status === "error" ? (
-                        <X className="h-4 w-4 text-red-500 shrink-0" />
-                      ) : (
-                        <Loader2 className="h-4 w-4 animate-spin text-[#4a90e2] shrink-0" />
-                      )}
-                      <span className="truncate flex-1">{u.name}</span>
-                      <span className="text-xs text-gray-500 whitespace-nowrap">
-                        {u.status === "resizing"
-                          ? "リサイズ中…"
-                          : u.status === "converting"
-                            ? "HEICを変換中…"
-                            : u.status === "uploading"
-                            ? "アップロード中…"
-                            : u.status === "done"
-                              ? "完了"
-                              : u.error}
-                      </span>
-                    </div>
-                  ))}
+                <div className="border rounded">
+                  {/* 枚数が多いと一覧を目で追えないので、先頭に進捗をまとめて出す */}
+                  <div className="flex items-center justify-between px-3 py-2 text-xs bg-gray-50 border-b">
+                    <span className="font-medium text-gray-700">
+                      {uploads.filter((u) => u.status === "done").length} / {uploads.length} 枚 完了
+                      {uploads.some((u) => u.status === "error") &&
+                        `（エラー ${uploads.filter((u) => u.status === "error").length} 枚）`}
+                    </span>
+                    {uploads.some(
+                      (u) =>
+                        u.status === "resizing" ||
+                        u.status === "converting" ||
+                        u.status === "uploading" ||
+                        u.status === "waiting"
+                    ) && <span className="text-gray-500">アップロード中はこの画面を閉じないでください</span>}
+                  </div>
+                  <div className="divide-y max-h-72 overflow-y-auto">
+                    {uploads.map((u) => (
+                      <div key={u.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                        {u.status === "done" ? (
+                          <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                        ) : u.status === "error" ? (
+                          <X className="h-4 w-4 text-red-500 shrink-0" />
+                        ) : (
+                          <Loader2 className="h-4 w-4 animate-spin text-[#4a90e2] shrink-0" />
+                        )}
+                        <span className="truncate flex-1">{u.name}</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          {u.status === "resizing"
+                            ? "リサイズ中…"
+                            : u.status === "converting"
+                              ? "HEICを変換中…"
+                              : u.status === "waiting"
+                                ? `混雑のため待機中…（${u.waitSec ?? 20}秒）`
+                                : u.status === "uploading"
+                                  ? "アップロード中…"
+                                  : u.status === "done"
+                                    ? "完了"
+                                    : u.error}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
