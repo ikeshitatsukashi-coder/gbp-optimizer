@@ -7,6 +7,7 @@ import { errorResponse } from "@/lib/api-helpers"
 import { checkRateLimit, getClientId } from "@/lib/rate-limit"
 import { resolveStoreScope } from "@/lib/services/image-scope"
 import { isOwnVideoUrl } from "@/lib/services/video-upload"
+import { MAX_POST_PHOTOS } from "@/lib/post-limits"
 
 /**
  * 予約投稿の一覧・作成（APIキー認証）
@@ -193,9 +194,10 @@ export async function POST(request: Request) {
         scheduledFor: scheduledDate,
         postType,
         summary: body.summary.trim(),
+        // 写真は最大10枚。動画は1本だけ（上で検証済み）
         mediaUrls:
           Array.isArray(body.mediaUrls) && body.mediaUrls.length > 0
-            ? body.mediaUrls.slice(0, 1)
+            ? body.mediaUrls.slice(0, postType === "VIDEO" ? 1 : MAX_POST_PHOTOS)
             : null,
         status: body.draft ? "draft" : "pending",
         callToAction,

@@ -19,6 +19,7 @@ import {
 import { useGbp } from "@/lib/store"
 import { ImageLibraryModal } from "@/components/gbp/image-library-modal"
 import { fetchJson, fetchJsonRetry } from "@/lib/fetch-json"
+import { MAX_POST_PHOTOS } from "@/lib/post-limits"
 
 interface GbpPost {
   name: string
@@ -1767,15 +1768,15 @@ function NewPostModal({
               <button
                 type="button"
                 onClick={() => setImageLibraryOpen(true)}
-                disabled={mediaUrls.length >= 1}
+                disabled={mediaUrls.length >= MAX_POST_PHOTOS}
                 className="text-sm text-[#4a90e2] border border-[#4a90e2] rounded px-4 h-9 hover:bg-blue-50 disabled:opacity-50"
               >
                 ファイル選択
               </button>
               <span className="text-xs text-gray-500">
                 {mediaUrls.length === 0
-                  ? "選択されていません。（Googleの仕様により1投稿につき画像1枚・PCからアップロード可・自動リサイズ）"
-                  : `${mediaUrls.length} / 1 枚`}
+                  ? `選択されていません。（1投稿につき最大${MAX_POST_PHOTOS}枚・PCからアップロード可・自動リサイズ）`
+                  : `${mediaUrls.length} / ${MAX_POST_PHOTOS} 枚（1枚目がメイン画像になります）`}
               </span>
             </div>
             {mediaUrls.length > 0 && (
@@ -1994,9 +1995,9 @@ function NewPostModal({
         isOpen={imageLibraryOpen}
         onClose={() => setImageLibraryOpen(false)}
         locationName={store || defaultLocationName}
-        maxCount={1 - mediaUrls.length}
+        maxCount={MAX_POST_PHOTOS - mediaUrls.length}
         onSelect={(urls) =>
-          setMediaUrls((prev) => [...prev, ...urls].slice(0, 1))
+          setMediaUrls((prev) => [...prev, ...urls].slice(0, MAX_POST_PHOTOS))
         }
       />
     </div>

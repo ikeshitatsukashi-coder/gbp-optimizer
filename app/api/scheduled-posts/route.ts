@@ -5,6 +5,7 @@ import { getAccessToken } from "@/lib/get-session"
 import { eq, sql, and, inArray } from "drizzle-orm"
 import { errorResponse } from "@/lib/api-helpers"
 import { requireRole } from "@/lib/services/authz"
+import { MAX_POST_PHOTOS } from "@/lib/post-limits"
 
 /**
  * GET /api/scheduled-posts
@@ -146,10 +147,10 @@ export async function POST(request: Request) {
         postType: body.postType ?? "STANDARD",
         summary: body.summary.trim(),
         // mediaUrls 配列を優先、旧 mediaUrl 単体も許容（Excelインポート互換）。
-        // Google の仕様上、1投稿の写真は1枚まで
+        // 1投稿につき写真は最大10枚（Googleビジネスプロフィールの上限）
         mediaUrls:
           Array.isArray(body.mediaUrls) && body.mediaUrls.length > 0
-            ? body.mediaUrls.slice(0, 1)
+            ? body.mediaUrls.slice(0, MAX_POST_PHOTOS)
             : body.mediaUrl
               ? [body.mediaUrl]
               : null,
@@ -236,7 +237,9 @@ export async function PATCH(request: Request) {
         ...(body.scheduledFor ? { scheduledFor: new Date(body.scheduledFor) } : {}),
         ...(body.summary !== undefined ? { summary: body.summary.slice(0, 1500) } : {}),
         ...(body.postType ? { postType: body.postType } : {}),
-        ...(body.mediaUrls !== undefined ? { mediaUrls: body.mediaUrls } : {}),
+        ...(body.mediaUrls !== undefined
+          ? { mediaUrls: body.mediaUrls ? body.mediaUrls.slice(0, MAX_POST_PHOTOS) : null }
+          : {}),
         ...(body.callToAction !== undefined ? { callToAction: body.callToAction } : {}),
         // 下書き⇄予約の切り替えもこの画面から行える
         ...(body.draft !== undefined ? { status: body.draft ? "draft" : "pending" } : {}),

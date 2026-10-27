@@ -3,6 +3,7 @@ import { companies, scheduledPosts, stores } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { normalizeCoreName, normalizeSearchText } from "@/lib/search-normalize"
 import { isOperational } from "@/lib/store-scope"
+import { MAX_POST_PHOTOS } from "@/lib/post-limits"
 
 /**
  * 予約投稿の一括インポート共通ロジック。
@@ -561,14 +562,23 @@ export async function importScheduledRows(
       else if (POST_TYPE_JA[t]) postType = POST_TYPE_JA[t]
     }
 
-    // 画像: URL ならそのまま / ファイル名なら画像アーカイブから解決
+    // 画像: URL ならそのまま / ファイル名なら画像アーカイブから解決。
+    // 1セルに改行またはカンマ区切りで複数指定できる（1投稿につき最大10枚）。
     let mediaUrls: string[] | null = null
     const mediaRaw = pickField(row, "mediaUrl", mapping)
     if (typeof mediaRaw === "string" && mediaRaw.trim()) {
-      const v = mediaRaw.trim()
-      if (v.startsWith("http")) {
-        mediaUrls = [v]
-      } else {
+      const values = mediaRaw
+        .split(/[\r\n,、]+/)
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .slice(0, MAX_POST_PHOTOS)
+      const resolved: string[] = []
+      let failed = false
+      for (const v of values) {
+        if (v.startsWith("http")) {
+          resolved.push(v)
+          continue
+        }
         // 会社フォルダ → 店舗フォルダ → 共通 の順に探す（他社のフォルダは見ない）
         const bareId = locationName.replace(/^locations\//, "")
         const companyCode = companyCodeByLocation.get(locationName)
@@ -578,16 +588,19 @@ export async function importScheduledRows(
           archiveByStore.get(bareId)?.get(key) ??
           archiveShared.get(key)
         if (hit) {
-          mediaUrls = [hit]
+          resolved.push(hit)
         } else {
           errors.push({
             rowIndex,
             error: `画像「${v}」がこの店舗の画像フォルダにありません。投稿ページで対象の店舗を選んだ状態で「画像アーカイブ」からアップロードしてください（この行は取り込まれていません）`,
             rowData: row,
           })
-          return
+          failed = true
+          break
         }
       }
+      if (failed) return
+      if (resolved.length > 0) mediaUrls = resolved
     }
 
     // CTA（日本語対応: 詳細→LEARN_MORE 等）

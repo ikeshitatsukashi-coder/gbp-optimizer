@@ -6,6 +6,7 @@ import { and, eq, lte, sql } from "drizzle-orm"
 import { getAccessToken } from "@/lib/get-session"
 import { getServiceAccessToken } from "@/lib/services/cron-auth"
 import { filterApprovedForExecution } from "@/lib/services/approvals"
+import { MAX_POST_PHOTOS } from "@/lib/post-limits"
 
 /** 投稿実行に時間がかかるため延長（1回最大20件） */
 export const maxDuration = 60
@@ -44,7 +45,7 @@ async function executeOne(
     mediaUrls: string[] | null
     callToAction: { actionType?: string; url?: string } | null
   }
-): Promise<{ ok: boolean; error?: string; result?: unknown }> {
+): Promise<{ ok: boolean; error?: string; result?: unknown; note?: string }> {
   const client = createGmbClient(accessToken)
   // 動画は「最新情報」には付けられないため、店舗の「写真・動画」欄に載せる
   if (post.postType === "VIDEO") {
@@ -69,14 +70,31 @@ async function executeOne(
   if (post.callToAction?.actionType) {
     body.callToAction = post.callToAction
   }
-  // Google の仕様上、1投稿に添付できる写真は1枚まで（複数送ると INVALID_ARGUMENT）
-  if (post.mediaUrls && post.mediaUrls.length > 0) {
-    body.media = [{ mediaFormat: "PHOTO", sourceUrl: post.mediaUrls[0] }]
+  const photos = (post.mediaUrls ?? []).slice(0, MAX_POST_PHOTOS)
+  if (photos.length > 0) {
+    body.media = photos.map((url) => ({ mediaFormat: "PHOTO", sourceUrl: url }))
   }
   try {
     const result = await client.createPost(post.accountName, post.locationName, body)
     return { ok: true, result }
   } catch (e) {
+    // 複数枚を Google が受け付けなかった場合でも投稿自体は通したいので、
+    // 1枚だけにして一度だけ送り直す（投稿が丸ごと失敗するのを防ぐ）
+    if (photos.length > 1) {
+      try {
+        const result = await client.createPost(post.accountName, post.locationName, {
+          ...body,
+          media: [{ mediaFormat: "PHOTO", sourceUrl: photos[0] }],
+        })
+        return {
+          ok: true,
+          result,
+          note: `写真${photos.length}枚ではGoogleに拒否されたため、1枚目のみで投稿しました`,
+        }
+      } catch {
+        // 1枚でも失敗した場合は元のエラーを返す
+      }
+    }
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 }
@@ -165,6 +183,8 @@ async function runExecution(accessToken: string) {
           status: "posted",
           executedAt: new Date(),
           result: r.result as Record<string, unknown>,
+          // 写真を減らして投稿した等の但し書きは、後から分かるよう残す
+          errorMessage: r.note ? r.note.slice(0, 500) : null,
           updatedAt: sql`now()`,
         })
         .where(eq(scheduledPosts.id, post.id))
