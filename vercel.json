@@ -1,8 +1,8 @@
 {
   "crons": [
-    { "path": "/api/cron/execute-scheduled", "schedule": "0 0 * * *" },
-    { "path": "/api/cron/execute-scheduled", "schedule": "0 1 * * *" },
-    { "path": "/api/cron/execute-scheduled", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/execute-scheduled", "schedule": "0 7 * * *" }
+    { "path": "/api/cron/execute-scheduled/9", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/execute-scheduled/10", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/execute-scheduled/12", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/execute-scheduled/16", "schedule": "0 7 * * *" }
   ]
 }
