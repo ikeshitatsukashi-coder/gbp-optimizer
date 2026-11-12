@@ -29,6 +29,8 @@ interface ScheduledPost {
   status: string
   executedAt: string | null
   errorMessage: string | null
+  /** 2枚目以降の写真を店舗の「写真」欄に載せた進み具合 */
+  extraPhotos?: { uploaded: number; pending: number; failed: number; errors: string[] } | null
   createdAt: string
 }
 
@@ -219,7 +221,7 @@ export default function ScheduledPostsPage() {
   const handleExecuteNow = async () => {
     if (
       !confirm(
-        "期日が到来している予約を今すぐ実行しますか？\n（自分の Google アカウントの権限で投稿します）"
+        "期日が到来している予約を今すぐ実行しますか？\n（自動実行と同じ、保存済みの Google 認証で投稿します）"
       )
     )
       return
@@ -229,7 +231,21 @@ export default function ScheduledPostsPage() {
       const res = await fetch("/api/cron/execute-scheduled", { method: "POST" })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
-      setSuccess(`実行完了: 投稿成功 ${j.posted} 件 / 失敗 ${j.failed} 件 / 対象 ${j.processed} 件`)
+      // 認証が通らなかった場合は、投稿を失敗にせず予約のまま残している
+      if (j.authError) throw new Error(j.authError)
+      if (j.skipped) {
+        setSuccess(j.reason || "今回は実行を見送りました")
+      } else {
+        const extra =
+          j.extraPhotos && (j.extraPhotos.uploaded > 0 || j.extraPhotos.failed > 0)
+            ? ` / 写真欄へ追加 ${j.extraPhotos.uploaded} 枚` +
+              (j.extraPhotos.failed > 0 ? `（失敗 ${j.extraPhotos.failed} 枚）` : "")
+            : ""
+        const deferred = j.deferred > 0 ? ` / 次回に回した分 ${j.deferred} 件` : ""
+        setSuccess(
+          `実行完了: 投稿成功 ${j.posted} 件 / 失敗 ${j.failed} 件 / 対象 ${j.processed} 件${extra}${deferred}`
+        )
+      }
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -411,6 +427,27 @@ export default function ScheduledPostsPage() {
               {p.callToAction?.actionType && (
                 <div className="text-xs text-muted-foreground mt-2">
                   CTA: {p.callToAction.actionType} → {p.callToAction.url}
+                </div>
+              )}
+
+              {/* 写真が複数ある場合: 投稿に載るのは1枚目だけで、残りは店舗の「写真」欄に載る */}
+              {p.status !== "posted" && (p.mediaUrls?.length ?? 0) > 1 && (
+                <div className="text-xs text-muted-foreground mt-2">
+                  写真 {p.mediaUrls!.length} 枚: 1枚目を投稿に掲載し、残り{" "}
+                  {p.mediaUrls!.length - 1} 枚は店舗の「写真」欄に追加します
+                </div>
+              )}
+              {p.extraPhotos && (
+                <div className="text-xs text-muted-foreground mt-2">
+                  店舗の「写真」欄への追加: {p.extraPhotos.uploaded} 枚 完了
+                  {p.extraPhotos.pending > 0 &&
+                    `・残り ${p.extraPhotos.pending} 枚（次の実行で追加されます）`}
+                  {p.extraPhotos.failed > 0 && (
+                    <span className="text-red-700">
+                      ・{p.extraPhotos.failed} 枚は Google に受け付けられませんでした
+                      {p.extraPhotos.errors[0] ? `（${p.extraPhotos.errors[0].slice(0, 80)}）` : ""}
+                    </span>
+                  )}
                 </div>
               )}
 

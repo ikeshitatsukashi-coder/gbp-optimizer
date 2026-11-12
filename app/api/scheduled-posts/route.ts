@@ -72,6 +72,8 @@ export async function GET(request: Request) {
         // 実投稿後に Google が返した投稿名（v4一覧との重複判定に使う）
         resultName:
           (row.result as { name?: string } | null)?.name ?? null,
+        // 2枚目以降の写真を店舗の「写真」欄に載せた進み具合（無ければ null）
+        extraPhotos: summarizeExtraPhotos(row.result),
         gbpState: row.gbp_state ?? null,
         createdAt: new Date(row.created_at as string | Date).toISOString(),
       })),
@@ -298,5 +300,23 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true })
   } catch (e) {
     return errorResponse("Failed to delete scheduled post", e)
+  }
+}
+
+
+/** result.extraPhotos を、画面に出す件数だけにまとめる */
+function summarizeExtraPhotos(
+  result: unknown
+): { uploaded: number; pending: number; failed: number; errors: string[] } | null {
+  const x = (result as { extraPhotos?: Record<string, unknown> } | null)?.extraPhotos
+  if (!x) return null
+  const uploaded = Array.isArray(x.uploaded) ? x.uploaded.length : 0
+  const pending = Array.isArray(x.pending) ? x.pending.length : 0
+  const failedList = Array.isArray(x.failed) ? (x.failed as { error?: string }[]) : []
+  return {
+    uploaded,
+    pending,
+    failed: failedList.length,
+    errors: failedList.map((f) => String(f.error ?? "")).slice(0, 3),
   }
 }

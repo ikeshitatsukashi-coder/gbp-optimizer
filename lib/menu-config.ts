@@ -11,6 +11,11 @@ export const menuConfig: MenuGroup[] = [
     href: "/",
   },
   {
+    label: "投稿の進捗確認",
+    icon: "Activity",
+    href: "/progress",
+  },
+  {
     label: "店舗マスタ",
     icon: "Building2",
     children: [

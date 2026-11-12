@@ -1527,7 +1527,25 @@ function NewPostModal({
           body: JSON.stringify({ locationName: store, post }),
         })
         if (!ok) throw new Error(error ?? "投稿に失敗しました")
-        onSuccess("投稿しました")
+        // 2枚目以降は店舗の「写真」欄に載せる（投稿に付けられるのは1枚だけのため）
+        const extras = mediaUrls.slice(1)
+        let added = 0
+        for (const url of extras) {
+          const r = await fetchJson("/api/gbp/media", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ locationName: store, mediaFormat: "PHOTO", sourceUrl: url }),
+          })
+          if (r.ok) added++
+        }
+        onSuccess(
+          extras.length === 0
+            ? "投稿しました"
+            : `投稿しました（写真欄に ${added} 枚追加` +
+                (added < extras.length
+                  ? `・${extras.length - added} 枚は追加できませんでした）`
+                  : "）")
+        )
       }
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e))
@@ -1775,8 +1793,8 @@ function NewPostModal({
               </button>
               <span className="text-xs text-gray-500">
                 {mediaUrls.length === 0
-                  ? `選択されていません。（1投稿につき最大${MAX_POST_PHOTOS}枚・PCからアップロード可・自動リサイズ）`
-                  : `${mediaUrls.length} / ${MAX_POST_PHOTOS} 枚（1枚目がメイン画像になります）`}
+                  ? `選択されていません。（最大${MAX_POST_PHOTOS}枚・PCからアップロード可・自動リサイズ）`
+                  : `${mediaUrls.length} / ${MAX_POST_PHOTOS} 枚`}
               </span>
             </div>
             {mediaUrls.length > 0 && (
@@ -1799,15 +1817,22 @@ function NewPostModal({
                     >
                       ×
                     </button>
-                    {i === 0 && (
-                      <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] text-center rounded-b">
-                        メイン
-                      </span>
-                    )}
+                    <span
+                      className={`absolute bottom-0 left-0 right-0 text-white text-[10px] text-center rounded-b ${
+                        i === 0 ? "bg-[#4a90e2]/90" : "bg-black/60"
+                      }`}
+                    >
+                      {i === 0 ? "投稿に掲載" : "写真欄"}
+                    </span>
                   </div>
                 ))}
               </div>
             )}
+            {/* Googleの投稿は1件につき写真1枚まで。2枚目以降の行き先を明記する */}
+            <p className="text-xs text-gray-500 mt-2">
+              投稿に載る写真は1枚目だけです（Googleの制限）。2枚目以降は、同じ店舗の
+              Googleプロフィールの「写真」欄に追加されます。
+            </p>
           </div>
 
           {/* ボタンの追加 */}
