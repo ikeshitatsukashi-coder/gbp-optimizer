@@ -44,15 +44,38 @@ export async function GET(request: Request) {
       WHERE 1=1
         ${status ? sql`AND p.status = ${status}` : sql``}
         ${locationName ? sql`AND p.location_name = ${locationName}` : sql``}
-      ORDER BY p.scheduled_for DESC
+      ${
+        // 「予約中」だけは予約日の近い順に返す。遠い順のままだと、予約が500件を超えたときに
+        // これから出る直近の投稿が一覧から切れてしまうため。
+        // それ以外（投稿済・失敗・指定なし）は従来どおり新しい順。
+        status === "pending"
+          ? sql`ORDER BY p.scheduled_for ASC, p.id ASC`
+          : sql`ORDER BY p.scheduled_for DESC`
+      }
       LIMIT 500
     `)
+
+    // 500件で切れているかを画面に出せるよう、同じ条件での全体件数も返す
+    const totalRows = await db.execute(sql`
+      SELECT count(*)::int AS n
+      FROM scheduled_posts p
+      INNER JOIN stores s ON s.location_name = p.location_name
+      WHERE 1=1
+        ${status ? sql`AND p.status = ${status}` : sql``}
+        ${locationName ? sql`AND p.location_name = ${locationName}` : sql``}
+    `)
+    const totalList = Array.isArray(totalRows)
+      ? totalRows
+      : ((totalRows as { rows?: unknown[] }).rows ?? [])
+    const total = Number((totalList[0] as { n?: number } | undefined)?.n ?? 0)
 
     const list = Array.isArray(rows)
       ? rows
       : ((rows as { rows?: unknown[] }).rows ?? [])
 
     return NextResponse.json({
+      /** 同じ条件に当てはまる全体の件数（posts は最大500件） */
+      total,
       posts: (list as Array<Record<string, unknown>>).map((row) => ({
         id: row.id,
         locationName: row.location_name,

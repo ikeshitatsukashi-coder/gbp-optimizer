@@ -74,6 +74,8 @@ function toDateTimeLocal(d: Date): string {
 export default function ScheduledPostsPage() {
   const { locationName, locations } = useGbp()
   const [posts, setPosts] = useState<ScheduledPost[]>([])
+  /** 絞り込み条件に当てはまる全体の件数（一覧は最大500件まで） */
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -145,6 +147,7 @@ export default function ScheduledPostsPage() {
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || j.detail || `HTTP ${res.status}`)
       setPosts(j.posts)
+      setTotal(typeof j.total === "number" ? j.total : j.posts.length)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -379,6 +382,15 @@ export default function ScheduledPostsPage() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> 読み込み中…
         </div>
+      )}
+
+      {/* 何件を、どの順で出しているか（500件で切れている場合はその旨も） */}
+      {!loading && posts.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {statusFilter === "pending" ? "予約日の近い順" : "予約日の新しい順"}に {posts.length} 件を表示
+          {total > posts.length &&
+            `（全 ${total} 件のうち${statusFilter === "pending" ? "直近" : "新しい"} ${posts.length} 件）`}
+        </p>
       )}
 
       {!loading && posts.length === 0 && (
