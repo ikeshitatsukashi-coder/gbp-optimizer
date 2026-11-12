@@ -16,6 +16,12 @@ export const menuConfig: MenuGroup[] = [
     href: "/progress",
   },
   {
+    // お客様に喜んでもらうための機能（2026-11 追加）。どれも既存の画面・動きには手を入れていない
+    label: "お客様サポート",
+    icon: "HeartHandshake",
+    children: [{ label: "月次レポート", href: "/reports/monthly" }],
+  },
+  {
     label: "店舗マスタ",
     icon: "Building2",
     children: [

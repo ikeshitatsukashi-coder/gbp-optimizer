@@ -1,0 +1,947 @@
+/*
+ * 月次レポート（お客様に見せる画面）
+ *
+ * 型：文字と数字が主役 × 明るい地。写真は投稿の実物をそのまま載せる（切らない・文字を重ねない）。
+ * 色：墨 + 生成りの地 + 朱1色（朱は「今月の棒」「増えた数字」「頭文字」だけ＝面積1%未満）
+ * 余白：8 / 32 / 64（見出しの下だけ）/ 128 の段。版面は左128：右80の非対称。
+ * 影・角丸・線画アイコンは使わない。区切りは余白 → 1pxの罫 → 一段沈めた面の順。
+ */
+
+.mr {
+  --ink: #141210;
+  --paper: #f7f5f1;
+  --surface: #ede9e2;
+  --rule: #d6d0c6;
+  --muted: #8a857e;
+  --brand: #c8421e;
+  --pl: clamp(24px, 8.9vw, 128px);
+  --pr: clamp(16px, 5.55vw, 80px);
+  --gap: clamp(72px, 8.9vw, 128px);
+
+  position: relative;
+  min-height: 100%;
+  overflow-x: clip;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", var(--font-zen), "Yu Gothic",
+    sans-serif;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.9;
+  letter-spacing: 0.03em;
+  font-feature-settings: "palt";
+  -webkit-font-smoothing: antialiased;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.mr *,
+.mr *::before,
+.mr *::after {
+  box-sizing: border-box;
+}
+
+/* 余白の初期化は詳細度0で書く（各部品で決めた余白を打ち消さないため） */
+:where(.mr) :where(p, h1, h2, dl, dd, figure, blockquote) {
+  margin: 0;
+}
+
+.mr wbr {
+  /* 文節の切れ目でだけ折り返す */
+  display: inline;
+}
+
+/* ------------------------------- 表紙 ------------------------------- */
+
+.mr-hero {
+  position: relative;
+  display: grid;
+  align-content: end;
+  min-height: min(100svh, 900px);
+  /* 下は、うすい英字が見えている高さ＋32px をあけて、文字と中途半端に重ならないようにする */
+  padding: 128px var(--pr) calc(clamp(112px, 24vw, 360px) * 0.52 + 32px) var(--pl);
+  overflow: hidden;
+}
+
+.mr-eyebrow {
+  position: absolute;
+  top: 32px;
+  left: var(--pl);
+  display: flex;
+  gap: 32px;
+  font: 500 11px/1 var(--font-barlow), sans-serif;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.mr-eyebrow b {
+  font-weight: 700;
+}
+
+.mr-eyebrow span {
+  color: var(--muted);
+}
+
+.mr-hero-vert {
+  position: absolute;
+  top: 32px;
+  right: clamp(12px, 2.2vw, 32px);
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  font: 500 11px/1 var(--font-barlow), sans-serif;
+  letter-spacing: 0.3em;
+  color: var(--muted);
+}
+
+/* 月の英語名を、うすい巨大な文字で右下へ断ち切る */
+.mr-hero-wm {
+  position: absolute;
+  right: -0.07em;
+  /* 下端を「はみ出し」ではなく自分の箱で切る（ページをまたぐ箱は印刷で次ページへ送られて消えるため） */
+  bottom: 0;
+  height: 0.52em;
+  overflow: hidden;
+  white-space: nowrap;
+  font: 700 clamp(112px, 24vw, 360px) / 0.8 var(--font-barlow), sans-serif;
+  letter-spacing: -0.01em;
+  /* 墨を6%だけ地に混ぜた色。透明度で薄くするとPDFで消えることがあるため、色そのもので指定する */
+  color: #e9e7e3;
+  pointer-events: none;
+}
+
+/* 月の数字。左へ断ち切り、重心を中央から外す */
+.mr-hero-num {
+  position: absolute;
+  top: 44%;
+  left: -0.09em;
+  display: flex;
+  align-items: flex-end;
+  transform: translateY(-50%);
+  font: 700 clamp(240px, 46vw, 660px) / 0.74 var(--font-barlow), sans-serif;
+  letter-spacing: -0.03em;
+  pointer-events: none;
+}
+
+.mr-hero-num i {
+  margin: 0 0 0.07em 0.05em;
+  font: 900 0.16em/1 var(--font-zen), sans-serif;
+  font-style: normal;
+  letter-spacing: 0;
+  color: var(--brand);
+}
+
+.mr-hero-body {
+  --tw: min(100vw - var(--pl) - var(--pr), 600px);
+  position: relative;
+  justify-self: end;
+  width: var(--tw);
+}
+
+.mr-hero-ym {
+  margin-bottom: 8px;
+  font: 500 clamp(15px, 1.55vw, 22px) / 1.5 var(--font-zen), sans-serif;
+  letter-spacing: 0.14em;
+}
+
+/* --n は「いちばん長い行の字数」。その行が1行に収まる大きさまで自動で下げる */
+.mr-hero-title {
+  font: 900 min(clamp(30px, 3.9vw, 56px), calc(var(--tw) / var(--n, 12))) / 1.22 var(--font-zen),
+    sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.mr-hero-title span {
+  display: block;
+  white-space: nowrap;
+}
+
+.mr-hero-title span:last-of-type {
+  display: inline;
+}
+
+.mr-hero-title small {
+  margin-left: 0.5em;
+  font-size: 0.4em;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+}
+
+.mr-hero-period {
+  margin-top: 32px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ink);
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.mr-hero-period span {
+  display: block;
+}
+
+/* ------------------------------ 章の共通 ------------------------------ */
+
+.mr-sec {
+  position: relative;
+  /* うすい章番号を、必ず本文の後ろに回すための囲い */
+  isolation: isolate;
+  padding: var(--gap) var(--pr) 0 var(--pl);
+}
+
+.mr-head {
+  position: relative;
+}
+
+/* 全章共通の細い帯（章番号｜章の名前） */
+.mr-band {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 32px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ink);
+  font: 500 11px/1.6 var(--font-zen), sans-serif;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+
+.mr-band span:first-child {
+  font: 700 11px/1.6 var(--font-barlow), sans-serif;
+  letter-spacing: 0.28em;
+  color: var(--ink);
+}
+
+/* 章番号を、うすい巨大な数字で右へ断ち切る */
+.mr-head-no {
+  position: absolute;
+  top: 32px;
+  right: calc(var(--pr) * -1 - 0.05em);
+  z-index: -1;
+  font: 700 clamp(128px, 20vw, 288px) / 0.8 var(--font-barlow), sans-serif;
+  letter-spacing: -0.02em;
+  color: var(--surface);
+  pointer-events: none;
+}
+
+.mr-h2 {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: var(--gap) 0 64px;
+}
+
+/* 英字を主、和文を従にする。頭文字だけ朱 */
+.mr-h2-en {
+  font: 700 clamp(56px, 6.7vw, 96px) / 0.9 var(--font-barlow), sans-serif;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.mr-h2-en::first-letter {
+  color: var(--brand);
+}
+
+.mr-h2-ja {
+  font: 500 clamp(15px, 1.55vw, 22px) / 1.5 var(--font-zen), sans-serif;
+  letter-spacing: 0.14em;
+}
+
+.mr-label {
+  margin-bottom: 8px;
+  font: 500 13px/1.6 var(--font-zen), sans-serif;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.mr-giant {
+  white-space: nowrap;
+  font: 700 clamp(96px, 11.2vw, 160px) / 0.86 var(--font-barlow), sans-serif;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mr-giant small {
+  margin-left: 0.5em;
+  font: 500 0.14em/1 var(--font-zen), sans-serif;
+  letter-spacing: 0.1em;
+}
+
+.mr-vs {
+  margin-top: 32px;
+  font: 500 13px/1.6 var(--font-zen), sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.mr-vs.is-up,
+.mr .is-up {
+  color: var(--brand);
+}
+
+.mr-lead {
+  font: 500 clamp(16px, 1.55vw, 22px) / 2 var(--font-zen), sans-serif;
+  letter-spacing: 0.1em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.mr-lead b {
+  font-weight: 900;
+  text-decoration: underline;
+  text-decoration-color: var(--brand);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+}
+
+.mr-note {
+  margin-top: 32px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ----------------------------- 今月の数字 ----------------------------- */
+
+.mr-kpi-grid {
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  column-gap: var(--gap);
+  align-items: start;
+}
+
+.mr-kpi-list > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 32px;
+  align-items: end;
+  padding: 32px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.mr-kpi-list > div:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.mr-kpi-list dt {
+  padding-bottom: 8px;
+  font: 500 16px/1.6 var(--font-zen), sans-serif;
+  letter-spacing: 0.06em;
+}
+
+.mr-kpi-list dt .en {
+  display: block;
+  margin-bottom: 8px;
+  font: 500 11px/1 var(--font-barlow), sans-serif;
+  letter-spacing: 0.26em;
+  color: var(--muted);
+}
+
+.mr-kpi-list dd {
+  white-space: nowrap;
+  text-align: right;
+  font: 700 clamp(56px, 6.7vw, 96px) / 0.86 var(--font-barlow), sans-serif;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mr-kpi-list dd small {
+  margin-left: 0.5em;
+  font: 500 0.2em/1 var(--font-zen), sans-serif;
+  letter-spacing: 0.1em;
+}
+
+.mr-kpi-list dd.sub {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 0 32px;
+  justify-content: flex-end;
+  margin-top: 8px;
+  white-space: normal;
+  font: 300 13px/1.8 "Hiragino Sans", "Hiragino Kaku Gothic ProN", var(--font-zen), sans-serif;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.mr-kpi-list dd.sub:empty {
+  display: none;
+}
+
+/* ------------------------------ 棒グラフ ------------------------------ */
+
+.mr-bars {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(8px, 2.2vw, 32px);
+  align-items: end;
+  height: clamp(200px, 22vw, 320px);
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.mr-bar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.mr-bar-v {
+  margin-bottom: 8px;
+  font: 500 clamp(13px, 1.5vw, 22px) / 1 var(--font-barlow), sans-serif;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.mr-bar-b {
+  display: block;
+  flex: none;
+  /* 上の数字のぶん（48px）を残した高さに対する割合 */
+  height: calc((100% - 48px) * var(--r, 0));
+  min-height: 2px;
+  background: var(--rule);
+}
+
+.mr-bar-m {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  font: 500 13px/1 var(--font-barlow), sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.mr-bar-m small {
+  margin-left: 0.15em;
+  font: 500 11px/1 var(--font-zen), sans-serif;
+}
+
+/* 色を付けるのは今月の1本だけ */
+.mr-bar.is-now .mr-bar-v {
+  font-size: clamp(16px, 2.4vw, 34px);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mr-bar.is-now .mr-bar-b {
+  background: var(--brand);
+}
+
+.mr-bar.is-now .mr-bar-m {
+  color: var(--ink);
+}
+
+/* ------------------------------ 表示回数 ------------------------------ */
+
+.mr-views-grid {
+  display: grid;
+  grid-template-columns: 4fr 8fr;
+  column-gap: var(--gap);
+  align-items: end;
+}
+
+.mr-table-wrap {
+  margin-top: 64px;
+  overflow-x: auto;
+}
+
+/* 横罫だけの表 */
+.mr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.mr-table th,
+.mr-table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--rule);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mr-table thead th {
+  border-bottom-color: var(--ink);
+  font: 500 11px/1.9 var(--font-zen), sans-serif;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.mr-table th:first-child {
+  padding-left: 0;
+  text-align: left;
+  font: 300 13px/1.9 "Hiragino Sans", "Hiragino Kaku Gothic ProN", var(--font-zen), sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.mr-table td {
+  font: 500 22px/1.9 var(--font-barlow), sans-serif;
+  color: var(--muted);
+}
+
+.mr-table .is-now {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mr-table.is-tight td {
+  font-size: 16px;
+}
+
+/* ------------------------------ クチコミ ------------------------------ */
+
+.mr-reviews-grid {
+  display: grid;
+  grid-template-columns: 4fr 8fr;
+  column-gap: var(--gap);
+  align-items: start;
+}
+
+.mr-meter {
+  height: 8px;
+  margin-top: 32px;
+  background: var(--surface);
+}
+
+.mr-meter span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+
+.mr-reviews-chart .mr-table-wrap {
+  margin-top: 32px;
+}
+
+.mr-voices {
+  margin: var(--gap) 0 0 clamp(0px, 8.9vw, 128px);
+  max-width: 720px;
+}
+
+.mr-voices blockquote {
+  padding: 32px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.mr-voices blockquote p {
+  font: 500 clamp(16px, 1.55vw, 22px) / 2.1 var(--font-shippori), "Hiragino Mincho ProN", serif;
+  letter-spacing: 0.06em;
+}
+
+.mr-voices blockquote footer {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ------------------------------ 今月の投稿 ------------------------------ */
+
+/* 写真は実物の縦横比のまま、高さを揃えずに組む */
+.mr-collage {
+  margin-top: 64px;
+  column-count: 3;
+  column-gap: 32px;
+}
+
+.mr-collage figure {
+  margin-bottom: 64px;
+  break-inside: avoid;
+}
+
+.mr-collage img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--surface);
+}
+
+.mr-collage figcaption {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 32px;
+  align-items: baseline;
+  margin-top: 8px;
+}
+
+.mr-collage figcaption b {
+  font: 700 22px/1.4 var(--font-barlow), sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.mr-collage figcaption span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+/* ------------------------------ 追加した写真 ------------------------------ */
+
+.mr-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 64px;
+}
+
+.mr-strip img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--surface);
+}
+
+/* 印刷のときだけ出す注記（画面では奥付に同じ内容がある） */
+.mr-print-note {
+  display: none;
+}
+
+/* ------------------------------- 奥付 ------------------------------- */
+
+.mr-foot {
+  margin-top: var(--gap);
+  padding: 32px var(--pr) 64px var(--pl);
+  border-top: 1px solid var(--rule);
+  font-size: 11px;
+  line-height: 1.9;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* ----------------------- 画面の上に出す操作の帯 ----------------------- */
+
+.mr-tool {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  align-items: center;
+  padding: 8px var(--pr, 16px) 8px var(--pl, 24px);
+  background: #141210;
+  color: #f7f5f1;
+  font: 500 13px/1.6 "Hiragino Sans", "Hiragino Kaku Gothic ProN", var(--font-zen), sans-serif;
+  letter-spacing: 0.04em;
+}
+
+.mr-tool .grow {
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mr-tool button,
+.mr-tool a,
+.mr-tool select {
+  padding: 8px 16px;
+  border: 1px solid #f7f5f1;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mr-tool select option {
+  color: #141210;
+}
+
+.mr-tool button.is-main {
+  background: #f7f5f1;
+  color: #141210;
+}
+
+.mr-tool button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mr-tool .url {
+  flex: 1 1 100%;
+  font: 500 13px/1.6 var(--font-barlow), monospace;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  user-select: all;
+}
+
+.mr-msg {
+  padding: 128px var(--pr, 16px) 128px var(--pl, 24px);
+  background: #f7f5f1;
+  color: #141210;
+  font: 500 16px/1.9 "Hiragino Sans", "Hiragino Kaku Gothic ProN", var(--font-zen), sans-serif;
+  min-height: 100%;
+}
+
+.mr-msg small {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 300;
+  color: #8a857e;
+}
+
+.mr-warn {
+  padding: 8px var(--pr, 16px) 8px var(--pl, 24px);
+  background: #ede9e2;
+  color: #141210;
+  font: 300 13px/1.8 "Hiragino Sans", "Hiragino Kaku Gothic ProN", var(--font-zen), sans-serif;
+}
+
+/* ------------------------------- スマホ ------------------------------- */
+
+@media screen and (max-width: 860px) {
+  .mr {
+    font-size: 15px;
+  }
+
+  .mr-hero {
+    min-height: min(100svh, 760px);
+    padding-bottom: 72px;
+  }
+
+  .mr-hero-num {
+    top: 34%;
+    font-size: 62vw;
+  }
+
+  .mr-hero-body {
+    justify-self: start;
+  }
+
+  .mr-kpi-grid,
+  .mr-views-grid,
+  .mr-reviews-grid {
+    grid-template-columns: 1fr;
+    row-gap: 64px;
+  }
+
+  .mr-collage {
+    column-count: 2;
+    column-gap: 8px;
+  }
+
+  .mr-collage figure {
+    margin-bottom: 32px;
+  }
+
+  .mr-collage figcaption {
+    grid-template-columns: 1fr;
+  }
+
+  .mr-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* 6か月ぶんが横に収まるよう詰める（今月の列が画面の外に出ないように） */
+  .mr-table th,
+  .mr-table td {
+    padding: 8px 4px;
+  }
+
+  .mr-table td {
+    font-size: 15px;
+  }
+
+  .mr-table thead th {
+    letter-spacing: 0.04em;
+  }
+
+  .mr-table th:first-child {
+    width: 34%;
+    white-space: normal;
+    word-break: keep-all;
+    line-height: 1.5;
+  }
+
+  .mr-kpi-list dt {
+    word-break: keep-all;
+  }
+}
+
+/* ------------------------------- 印刷 ------------------------------- */
+
+@page {
+  size: A4 landscape;
+  margin: 0;
+}
+
+@media print {
+  /* 画面用の「縦にスクロールする枠」を外し、全ページを印刷できるようにする */
+  html:has(.mr),
+  html:has(.mr) body,
+  html:has(.mr) body div:has(.mr) {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #f7f5f1 !important;
+  }
+
+  .mr-noprint {
+    display: none !important;
+  }
+
+  .mr {
+    --pl: 24mm;
+    --pr: 15mm;
+    --gap: 10mm;
+    font-size: 12px;
+  }
+
+  /* 表紙・数字・表示回数・クチコミは、それぞれ横向き1ページに収める */
+  .mr-sheet {
+    height: 209mm;
+    overflow: hidden;
+    break-after: page;
+  }
+
+  .mr-sec {
+    padding-top: 12mm;
+  }
+
+  .mr-hero {
+    min-height: 0;
+    padding: 0 var(--pr) 56mm var(--pl);
+  }
+
+  .mr-hero-num {
+    top: 41%;
+    font-size: 150mm;
+  }
+
+  .mr-hero-wm {
+    font-size: 84mm;
+  }
+
+  .mr-hero-body {
+    --tw: 112mm;
+    justify-self: end;
+  }
+
+  .mr-hero-title {
+    font-size: min(40px, calc(var(--tw) / var(--n, 12)));
+  }
+
+  .mr-head-no {
+    top: 2mm;
+    font-size: 40mm;
+  }
+
+  .mr-h2 {
+    margin: 8mm 0;
+  }
+
+  .mr-h2-en {
+    font-size: 17mm;
+  }
+
+  .mr-h2-ja,
+  .mr-lead {
+    font-size: 15px;
+  }
+
+  .mr-giant {
+    font-size: 34mm;
+  }
+
+  .mr-vs {
+    margin-top: 5mm;
+  }
+
+  .mr-kpi-grid {
+    grid-template-columns: 5fr 7fr;
+    column-gap: 14mm;
+  }
+
+  .mr-kpi-list > div {
+    padding: 4.5mm 0;
+  }
+
+  .mr-kpi-list dt {
+    font-size: 13px;
+  }
+
+  .mr-kpi-list dd {
+    font-size: 16mm;
+  }
+
+  .mr-views-grid,
+  .mr-reviews-grid {
+    grid-template-columns: 4fr 8fr;
+    column-gap: 14mm;
+  }
+
+  .mr-bars {
+    height: 56mm;
+    margin-bottom: 8mm;
+  }
+
+  .mr-table-wrap,
+  .mr-reviews-chart .mr-table-wrap {
+    margin-top: 6mm;
+    overflow: visible;
+  }
+
+  .mr-table th,
+  .mr-table td {
+    padding: 1.2mm 2mm;
+  }
+
+  .mr-table td {
+    font-size: 15px;
+  }
+
+  .mr-meter {
+    margin-top: 5mm;
+  }
+
+  .mr-voices {
+    display: none;
+  }
+
+  .mr-collage {
+    margin-top: 8mm;
+    column-count: 4;
+    column-gap: 6mm;
+  }
+
+  .mr-collage figure {
+    margin-bottom: 8mm;
+  }
+
+  .mr-collage figcaption {
+    grid-template-columns: 1fr;
+  }
+
+  .mr-strip {
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    margin-top: 8mm;
+  }
+
+  /* 奥付は「数字」のページの左下に入れる（最後に奥付だけのページを作らないため） */
+  .mr-foot {
+    display: none;
+  }
+
+  .mr-print-note {
+    display: block;
+    margin-top: 14mm;
+    padding-top: 8px;
+    border-top: 1px solid var(--rule);
+    font-size: 9px;
+    line-height: 1.9;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+}

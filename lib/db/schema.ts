@@ -844,3 +844,157 @@ export const trackedLinkClicks = pgTable(
   },
   (table) => [primaryKey({ columns: [table.linkId, table.day] })]
 )
+
+/* -------------------------------------------------------------------------- */
+/*   お客様サポート機能（月次レポート / 写真の受付 / クリック計測 / 返信の下書き）   */
+/*   すべて新しい表。既存の表・列には手を入れていない。                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 月次レポートのお客様用ページ（/share/monthly/{token}）。
+ * 公開ページは Google に問い合わせられないため、発行した時点の数字を丸ごと保存する。
+ * 1店舗・1か月につき1件。出し直すと同じURLのまま中身だけ新しくなる。
+ */
+export const monthlyReports = pgTable(
+  "monthly_reports",
+  {
+    id: serial("id").primaryKey(),
+    token: varchar("token", { length: 64 }).notNull(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** YYYY-MM（日本時間） */
+    month: varchar("month", { length: 7 }).notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    revoked: boolean("revoked").notNull().default(false),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("monthly_reports_token_uniq").on(t.token),
+    uniqueIndex("monthly_reports_location_month_uniq").on(t.locationName, t.month),
+  ]
+)
+
+/**
+ * お客様用の写真受付ページ（/share/photos/{token}）。1店舗につき1つ。
+ * enabled=false にすると、そのURLからは送れなくなる。
+ */
+export const photoIntakeLinks = pgTable(
+  "photo_intake_links",
+  {
+    id: serial("id").primaryKey(),
+    token: varchar("token", { length: 64 }).notNull(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    enabled: boolean("enabled").notNull().default(true),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("photo_intake_links_token_uniq").on(t.token),
+    uniqueIndex("photo_intake_links_location_uniq").on(t.locationName),
+  ]
+)
+
+/** 写真受付ページからお客様が送ってくれた写真の記録（実体は画像アーカイブと同じ保管場所） */
+export const photoIntakeUploads = pgTable(
+  "photo_intake_uploads",
+  {
+    id: serial("id").primaryKey(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    fileName: text("file_name"),
+    /** 送ってくれた方の名前（任意） */
+    senderName: text("sender_name"),
+    /** ひとこと（任意。何の写真か） */
+    note: text("note"),
+    /** 担当が確認した時刻（null = まだ見ていない） */
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("photo_intake_uploads_location_idx").on(t.locationName, t.createdAt)]
+)
+
+/**
+ * 店舗ごとの追加機能のON/OFF。行が無い店舗はすべてOFF（従来どおりの動き）。
+ */
+export const storeFeatures = pgTable("store_features", {
+  locationName: varchar("location_name", { length: 200 })
+    .primaryKey()
+    .references(() => stores.locationName, { onDelete: "cascade" }),
+  /** 投稿のボタンのクリック数を数える（ONの店舗だけ、ボタンのリンクが計測用のURLを経由する） */
+  trackPostClicks: boolean("track_post_clicks").notNull().default(false),
+  updatedBy: text("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+/**
+ * クチコミ返信の下書き。担当が1件ずつ確認して「承認して投稿」を押すまで Google には出ない。
+ */
+export const reviewReplyDrafts = pgTable(
+  "review_reply_drafts",
+  {
+    /** Google review resource name (accounts/x/locations/y/reviews/z) */
+    reviewName: varchar("review_name", { length: 300 }).primaryKey(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    draft: text("draft").notNull(),
+    /** ai = AIが作成 / template = 定型文から作成 / manual = 担当が入力 */
+    source: varchar("source", { length: 20 }).notNull().default("template"),
+    /** draft = 下書き / posted = 投稿済み / skipped = 見送り */
+    status: varchar("status", { length: 20 }).notNull().default("draft"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    postedBy: text("posted_by"),
+  },
+  (t) => [
+    index("review_reply_drafts_location_idx").on(t.locationName),
+    index("review_reply_drafts_status_idx").on(t.status),
+  ]
+)
+
+/**
+ * 低評価クチコミのお知らせ。Google から読み取った時点の内容を控えておく
+ * （クチコミの取り込み結果 reviews_archive には書き込まない）。
+ */
+export const reviewNotices = pgTable(
+  "review_notices",
+  {
+    reviewName: varchar("review_name", { length: 300 }).primaryKey(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    reviewer: text("reviewer"),
+    starRating: integer("star_rating"),
+    comment: text("comment"),
+    reviewCreateTime: timestamp("review_create_time", { withTimezone: true }),
+    detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+    /** new = 未対応 / notified = お客様に連絡済み / done = 対応済み */
+    status: varchar("status", { length: 20 }).notNull().default("new"),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    notifiedBy: text("notified_by"),
+    notifiedTo: text("notified_to"),
+    handledAt: timestamp("handled_at", { withTimezone: true }),
+    handledBy: text("handled_by"),
+  },
+  (t) => [
+    index("review_notices_location_idx").on(t.locationName),
+    index("review_notices_status_idx").on(t.status, t.detectedAt),
+  ]
+)
+
+export type MonthlyReport = typeof monthlyReports.$inferSelect
+export type PhotoIntakeLink = typeof photoIntakeLinks.$inferSelect
+export type PhotoIntakeUpload = typeof photoIntakeUploads.$inferSelect
+export type StoreFeature = typeof storeFeatures.$inferSelect
+export type ReviewReplyDraft = typeof reviewReplyDrafts.$inferSelect
+export type ReviewNotice = typeof reviewNotices.$inferSelect

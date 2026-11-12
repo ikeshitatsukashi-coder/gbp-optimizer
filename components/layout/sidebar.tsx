@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Activity,
+  HeartHandshake,
   Bot,
   BarChart3,
   TrendingUp,
@@ -30,6 +31,7 @@ import { menuConfig } from "@/lib/menu-config"
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard,
   Activity,
+  HeartHandshake,
   Bot,
   BarChart3,
   TrendingUp,
