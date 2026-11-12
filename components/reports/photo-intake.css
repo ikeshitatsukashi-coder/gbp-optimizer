@@ -1,0 +1,414 @@
+/*
+ * 写真の受付ページ（お客様がスマホで開く画面）
+ *
+ * 月次レポートと同じ調子：墨 + 生成りの地 + 朱1色。影・角丸・線画アイコンは使わない。
+ * 余白は 8 / 32 / 64 / 128 の段。版面は左を厚く、右を薄く。
+ * 送る操作が主役なので、押す場所（墨の板）を大きく、迷わない順に上から並べる。
+ */
+
+.pi {
+  --ink: #141210;
+  --paper: #f7f5f1;
+  --surface: #ede9e2;
+  --rule: #d6d0c6;
+  --muted: #8a857e;
+  --brand: #c8421e;
+  --pl: clamp(24px, 8.9vw, 128px);
+  --pr: clamp(16px, 5.55vw, 80px);
+
+  position: relative;
+  min-height: 100%;
+  overflow-x: clip;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", var(--font-zen), "Yu Gothic",
+    sans-serif;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.9;
+  letter-spacing: 0.03em;
+  font-feature-settings: "palt";
+  -webkit-font-smoothing: antialiased;
+}
+
+.pi *,
+.pi *::before,
+.pi *::after {
+  box-sizing: border-box;
+}
+
+:where(.pi) :where(p, h1, h2, ul, li, figure) {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ------------------------------- 見出し ------------------------------- */
+
+.pi-hero {
+  position: relative;
+  padding: 128px var(--pr) 64px var(--pl);
+  overflow: hidden;
+}
+
+.pi-eyebrow {
+  position: absolute;
+  top: 32px;
+  left: var(--pl);
+  display: flex;
+  gap: 32px;
+  font: 500 11px/1.6 var(--font-zen), sans-serif;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+
+.pi-eyebrow b {
+  font: 700 11px/1.6 var(--font-barlow), sans-serif;
+  letter-spacing: 0.28em;
+  color: var(--ink);
+}
+
+.pi-vert {
+  position: absolute;
+  top: 32px;
+  right: clamp(12px, 2.2vw, 32px);
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  font: 500 11px/1 var(--font-barlow), sans-serif;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted);
+  /* うすい英字より手前に出す */
+  z-index: 1;
+}
+
+/* うすい巨大な英字を、右へ断ち切る */
+.pi-wm {
+  position: absolute;
+  top: 64px;
+  right: -0.12em;
+  white-space: nowrap;
+  font: 700 clamp(128px, 30vw, 400px) / 0.8 var(--font-barlow), sans-serif;
+  letter-spacing: -0.02em;
+  color: #e9e7e3;
+  pointer-events: none;
+}
+
+.pi-store {
+  position: relative;
+  margin-bottom: 8px;
+  font: 500 clamp(15px, 1.55vw, 22px) / 1.5 var(--font-zen), sans-serif;
+  letter-spacing: 0.14em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.pi-title {
+  position: relative;
+  font: 900 clamp(44px, 9.6vw, 96px) / 1.16 var(--font-zen), sans-serif;
+  letter-spacing: -0.04em;
+}
+
+.pi-title span {
+  display: block;
+  white-space: nowrap;
+}
+
+/* 頭の1字だけ朱 */
+.pi-title span:first-child::first-letter {
+  color: var(--brand);
+}
+
+.pi-lead {
+  position: relative;
+  max-width: 30em;
+  margin-top: 32px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------- 送る欄 ------------------------------- */
+
+.pi-form {
+  padding: 0 var(--pr) 128px var(--pl);
+}
+
+.pi-form-inner {
+  max-width: 640px;
+  padding-top: 32px;
+  border-top: 1px solid var(--ink);
+}
+
+.pi-step {
+  margin-bottom: 8px;
+  font: 700 11px/1.6 var(--font-barlow), sans-serif;
+  letter-spacing: 0.28em;
+  color: var(--muted);
+}
+
+.pi-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 32px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font: 900 clamp(18px, 4.6vw, 22px) / 1.4 var(--font-zen), sans-serif;
+  letter-spacing: 0.1em;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pi-btn small {
+  font: 700 clamp(22px, 6vw, 34px) / 1 var(--font-barlow), sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.pi-btn.is-line {
+  background: transparent;
+  color: var(--ink);
+}
+
+.pi-btn:disabled {
+  border-color: var(--rule);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: default;
+}
+
+.pi-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.pi-thumbs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 32px 8px;
+  margin-top: 32px;
+}
+
+.pi-thumbs li > div {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.pi-thumbs img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pi-thumbs .name {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+/* 状態は写真の上に重ねず、下に文字で出す */
+.pi-thumbs .state {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 8px;
+  font: 500 11px/1.6 var(--font-zen), sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.pi-thumbs .state.is-done {
+  color: var(--ink);
+}
+
+.pi-thumbs .state.is-error {
+  color: var(--brand);
+}
+
+.pi-thumbs button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+  cursor: pointer;
+}
+
+.pi-field {
+  display: block;
+  margin-top: 32px;
+}
+
+.pi-field span {
+  display: block;
+  margin-bottom: 8px;
+  font: 500 13px/1.6 var(--font-zen), sans-serif;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.pi-field input,
+.pi-field textarea {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  /* 16px未満だとスマホで入力時に画面が拡大されるため、16pxを下回らせない */
+  font: 300 16px/1.8 "Hiragino Sans", "Hiragino Kaku Gothic ProN", var(--font-zen), sans-serif;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pi-field input:focus,
+.pi-field textarea:focus {
+  border-bottom-color: var(--brand);
+}
+
+.pi-send {
+  margin-top: 64px;
+}
+
+.pi-msg {
+  margin-top: 32px;
+  padding: 32px;
+  background: var(--surface);
+  font: 500 15px/1.9 var(--font-zen), sans-serif;
+}
+
+.pi-msg.is-error {
+  color: var(--brand);
+}
+
+/* ----------------------------- 受け取りました ----------------------------- */
+
+.pi-done {
+  padding: 32px 0 64px;
+}
+
+.pi-done .num {
+  font: 700 clamp(128px, 36vw, 240px) / 0.8 var(--font-barlow), sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.pi-done .num small {
+  margin-left: 0.2em;
+  font: 900 0.18em/1 var(--font-zen), sans-serif;
+  letter-spacing: 0;
+  color: var(--brand);
+}
+
+.pi-done h2 {
+  margin-top: 32px;
+  font: 900 clamp(26px, 6.4vw, 34px) / 1.4 var(--font-zen), sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.pi-done p {
+  margin-top: 8px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.pi-done .pi-btn {
+  margin-top: 64px;
+}
+
+/* ------------------------------- ご案内 ------------------------------- */
+
+.pi-hints {
+  margin-top: 128px;
+}
+
+.pi-hints h2 {
+  margin-bottom: 32px;
+  font: 500 clamp(18px, 4.4vw, 22px) / 1.5 var(--font-zen), sans-serif;
+  letter-spacing: 0.12em;
+}
+
+.pi-hints li {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.pi-hints li b {
+  font: 700 22px/1.6 var(--font-barlow), sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.pi-hints p {
+  margin-top: 32px;
+  font-size: 13px;
+  color: var(--muted);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.pi-state {
+  padding: 128px var(--pr) 128px var(--pl);
+  font: 500 16px/1.9 var(--font-zen), sans-serif;
+}
+
+.pi-state small {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--muted);
+}
+
+/* ------------------------------- PC ------------------------------- */
+
+@media (min-width: 960px) {
+  .pi-body {
+    display: grid;
+    grid-template-columns: 6fr 6fr;
+    align-items: start;
+  }
+
+  .pi-hero {
+    position: sticky;
+    top: 0;
+    min-height: 100svh;
+    padding-top: 240px;
+    padding-right: 32px;
+  }
+
+  .pi-form {
+    padding: 240px var(--pr) 128px 64px;
+  }
+
+  .pi-thumbs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
