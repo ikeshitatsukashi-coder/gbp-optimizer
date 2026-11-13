@@ -3,6 +3,8 @@ import { stores } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { createGmbClient } from "@/lib/gbp-client"
 import { withGoogleRead } from "@/lib/services/google-read"
+import { looksLikeAddressOrPhone } from "@/lib/meo-keywords"
+import { fetchKeywordMonth, saveKeywordMonth } from "@/lib/services/meo-snapshot"
 import {
   JST_MS,
   jstMonthKey,
@@ -320,6 +322,28 @@ export async function buildMonthlyReport(
     report.errors.push({ section: "reviews", message: String(e instanceof Error ? e.message : e).slice(0, 200) })
   })
 
-  await Promise.all([postsTask, photosTask, insightsTask, reviewsTask])
+  /* --------------------------- 検索された言葉 --------------------------- */
+  // 月の途中は、まだ Google の集計が出ていないので読まない
+  const keywordsTask = isPartial
+    ? Promise.resolve()
+    : withGoogleRead(async (token) => {
+        const list = await fetchKeywordMonth(token, locationName, month)
+        await saveKeywordMonth(locationName, month, list)
+        const counted = list
+          .filter((k): k is { word: string; count: number } => k.count != null)
+          .filter((k) => !looksLikeAddressOrPhone(k.word))
+          .sort((a, b) => b.count - a.count)
+        report.keywords = {
+          total: counted.reduce((a, k) => a + k.count, 0),
+          words: counted.slice(0, 8).map((k) => ({ word: k.word, count: k.count })),
+        }
+      }).catch((e) => {
+        report.errors.push({
+          section: "keywords",
+          message: String(e instanceof Error ? e.message : e).slice(0, 200),
+        })
+      })
+
+  await Promise.all([postsTask, photosTask, insightsTask, reviewsTask, keywordsTask])
   return report
 }

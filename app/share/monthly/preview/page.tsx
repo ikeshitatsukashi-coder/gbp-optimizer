@@ -21,6 +21,7 @@ const SECTION_LABEL: Record<string, string> = {
   photos: "写真",
   insights: "表示回数",
   reviews: "クチコミ",
+  keywords: "検索された言葉",
 }
 
 function Preview() {

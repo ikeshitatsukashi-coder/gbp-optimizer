@@ -137,6 +137,9 @@ export function MonthlyReportView({ data }: { data: MonthlyReportData }) {
           : ""}
       </p>
       <p>クチコミの過去の件数と評価は、現在の合計から逆算した値です。</p>
+      {data.keywords && data.keywords.words.length > 0 && (
+        <p>検索された言葉の回数は、Googleが回数を公開している言葉だけの合計です。</p>
+      )}
       <p>
         作成日　
         {dot(new Date(new Date(data.generatedAt).getTime() + 9 * 3600e3).toISOString().slice(0, 10))}
@@ -331,6 +334,49 @@ export function MonthlyReportView({ data }: { data: MonthlyReportData }) {
         </section>
       )}
 
+      {/* --------------------------- 検索された言葉 --------------------------- */}
+      {data.keywords && data.keywords.words.length > 0 && (
+        <section className="mr-sec mr-sheet mr-words">
+          <SectionHead no={nextNo()} en="Keywords" ja="検索された言葉" />
+          <div className="mr-words-grid">
+            <div>
+              <p className="mr-label">検索されて、プロフィールが表示された回数</p>
+              <p className="mr-giant">
+                {nf(data.keywords.total)}
+                <small>回</small>
+              </p>
+              <p className="mr-lead mr-words-lead">
+                {m}月は、
+                <wbr />
+                こうした言葉での検索から、
+                <wbr />
+                プロフィールが表示されました。
+              </p>
+            </div>
+            <div className="mr-table-wrap">
+              <table className="mr-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{m}月に検索された言葉（多い順）</th>
+                    <th scope="col" className="is-now">
+                      表示された回数
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.keywords.words.map((k) => (
+                    <tr key={k.word}>
+                      <th scope="row">{k.word}</th>
+                      <td className="is-now">{nf(k.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ---------------------------- クチコミ ---------------------------- */}
       {data.reviews && data.reviews.total > 0 && (
         <section className="mr-sec mr-sheet mr-reviews">
@@ -436,7 +482,13 @@ export function MonthlyReportView({ data }: { data: MonthlyReportData }) {
             ))}
           </div>
           {data.posts.count > data.posts.items.length && (
-            <p className="mr-note">ほか {nf(data.posts.count - data.posts.items.length)}本</p>
+            <p className="mr-note is-screen">
+              ほか {nf(data.posts.count - data.posts.items.length)}本
+            </p>
+          )}
+          {/* 印刷では8本までを1ページに載せるので、残りの本数を添える */}
+          {data.posts.count > 8 && (
+            <p className="mr-note is-print">ほか {nf(data.posts.count - 8)}本</p>
           )}
         </section>
       )}

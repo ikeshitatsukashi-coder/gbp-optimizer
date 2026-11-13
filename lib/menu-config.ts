@@ -38,7 +38,12 @@ export const menuConfig: MenuGroup[] = [
   {
     label: "MEO対策",
     icon: "MapPin",
-    children: [{ label: "GBP最適化診断", href: "/meo/diagnosis" }],
+    children: [
+      { label: "やることリスト", href: "/meo/todo" },
+      { label: "検索キーワード", href: "/meo/search-words" },
+      { label: "対策の記録と効果", href: "/meo/actions" },
+      { label: "GBP最適化診断", href: "/meo/diagnosis" },
+    ],
   },
   {
     label: "Googleインサイト",

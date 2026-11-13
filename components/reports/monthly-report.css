@@ -492,6 +492,28 @@
   font-size: 16px;
 }
 
+/* ---------------------------- 検索された言葉 ---------------------------- */
+
+.mr-words-grid {
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  column-gap: var(--gap);
+  align-items: start;
+}
+
+.mr-words-grid .mr-table-wrap {
+  margin-top: 0;
+}
+
+.mr-words-grid .mr-table th:first-child {
+  font-size: 16px;
+  white-space: normal;
+}
+
+.mr-words-lead {
+  margin-top: 32px;
+}
+
 /* ------------------------------ クチコミ ------------------------------ */
 
 .mr-reviews-grid {
@@ -600,7 +622,8 @@
 }
 
 /* 印刷のときだけ出す注記（画面では奥付に同じ内容がある） */
-.mr-print-note {
+.mr-print-note,
+.mr-note.is-print {
   display: none;
 }
 
@@ -722,6 +745,7 @@
 
   .mr-kpi-grid,
   .mr-views-grid,
+  .mr-words-grid,
   .mr-reviews-grid {
     grid-template-columns: 1fr;
     row-gap: 64px;
@@ -882,6 +906,15 @@
     column-gap: 14mm;
   }
 
+  .mr-words-grid {
+    grid-template-columns: 5fr 7fr;
+    column-gap: 14mm;
+  }
+
+  .mr-words-lead {
+    margin-top: 5mm;
+  }
+
   .mr-bars {
     height: 56mm;
     margin-bottom: 8mm;
@@ -910,14 +943,43 @@
     display: none;
   }
 
+  /* 印刷では段組みをやめて4列の格子にする。段組みのままだと、ページをまたぐ時に
+     最後の1枚だけが次のページへ送られ、ほぼ空白のページができるため */
   .mr-collage {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8mm 6mm;
+    align-items: start;
     margin-top: 8mm;
-    column-count: 4;
-    column-gap: 6mm;
+    column-count: auto;
   }
 
   .mr-collage figure {
-    margin-bottom: 8mm;
+    margin-bottom: 0;
+    break-inside: avoid;
+  }
+
+  /* 印刷では投稿を1ページ（4列×2段＝8本）に収める。写真は切らずに、同じ高さの枠の中に全体を入れる */
+  .mr-collage figure:nth-child(n + 9) {
+    display: none;
+  }
+
+  .mr-collage img {
+    height: 32mm;
+    object-fit: contain;
+  }
+
+  .mr-collage figcaption span {
+    -webkit-line-clamp: 2;
+  }
+
+  .mr-note.is-screen {
+    display: none;
+  }
+
+  .mr-note.is-print {
+    display: block;
+    margin-top: 6mm;
   }
 
   .mr-collage figcaption {

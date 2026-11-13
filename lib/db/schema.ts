@@ -930,6 +930,8 @@ export const storeFeatures = pgTable("store_features", {
     .references(() => stores.locationName, { onDelete: "cascade" }),
   /** 投稿のボタンのクリック数を数える（ONの店舗だけ、ボタンのリンクが計測用のURLを経由する） */
   trackPostClicks: boolean("track_post_clicks").notNull().default(false),
+  /** 検索キーワードを「社名での検索」と見なすための言葉（店舗名から自動で拾えない略称・旧社名など） */
+  brandWords: jsonb("brand_words").$type<string[]>(),
   updatedBy: text("updated_by"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
@@ -992,6 +994,66 @@ export const reviewNotices = pgTable(
   ]
 )
 
+/* -------------------------------------------------------------------------- */
+/*   MEO（やることリスト / 検索キーワード / 対策の記録）。すべて新しい表。          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 店舗ごとのプロフィールの状態の控え（Google から読んだ時点のもの）。
+ * 41店舗ぶんを毎回 Google に問い合わせると遅いので、調べた結果をここに置いて一覧に使う。
+ * dismissed は「この店舗ではこの項目は対象外」と担当が決めた項目。
+ */
+export const meoSnapshots = pgTable("meo_snapshots", {
+  locationName: varchar("location_name", { length: 200 })
+    .primaryKey()
+    .references(() => stores.locationName, { onDelete: "cascade" }),
+  data: jsonb("data").notNull(),
+  dismissed: jsonb("dismissed").$type<string[]>(),
+  checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+/**
+ * 検索キーワード（どんな言葉で検索されて表示されたか）の月ごとの控え。
+ * 過ぎた月の数字は変わらないので、一度読んだらここから出す。
+ */
+export const searchKeywordMonths = pgTable(
+  "search_keyword_months",
+  {
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** YYYY-MM */
+    month: varchar("month", { length: 7 }).notNull(),
+    /** count が null のものは、Google が「15回未満」などとしか教えてくれなかった言葉 */
+    keywords: jsonb("keywords")
+      .$type<{ word: string; count: number | null; under?: number }[]>()
+      .notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.locationName, t.month] })]
+)
+
+/** やった対策の記録（いつ・どの店舗に・何をしたか）。前後の数字を比べるための目印 */
+export const meoActions = pgTable(
+  "meo_actions",
+  {
+    id: serial("id").primaryKey(),
+    locationName: varchar("location_name", { length: 200 })
+      .notNull()
+      .references(() => stores.locationName, { onDelete: "cascade" }),
+    /** 対策した日（日本時間・YYYY-MM-DD） */
+    actionDate: varchar("action_date", { length: 10 }).notNull(),
+    /** やることリストの項目ID、または other */
+    kind: varchar("kind", { length: 40 }).notNull(),
+    note: text("note"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("meo_actions_location_idx").on(t.locationName, t.actionDate)]
+)
+
+export type MeoSnapshotRow = typeof meoSnapshots.$inferSelect
+export type MeoAction = typeof meoActions.$inferSelect
 export type MonthlyReport = typeof monthlyReports.$inferSelect
 export type PhotoIntakeLink = typeof photoIntakeLinks.$inferSelect
 export type PhotoIntakeUpload = typeof photoIntakeUploads.$inferSelect

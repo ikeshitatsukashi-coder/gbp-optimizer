@@ -64,7 +64,22 @@ export interface MonthlyReportData {
     byMonth: Record<string, ReviewMonth>
     voices: { star: number; reviewer: string | null; comment: string; createTime: string }[]
   } | null
-  errors: { section: "posts" | "photos" | "insights" | "reviews"; message: string }[]
+  /**
+   * 検索された言葉（その月に、どんな言葉で検索されてプロフィールが表示されたか）。
+   * お客様に渡す資料なので、「社名かどうか」の分類はせず、回数の多い順にそのまま載せる
+   * （社名の読み違い・略称を機械では分けきれないため）。住所・電話番号での検索だけ除く。
+   * 無い月・まだ集計が出ていない月は null。
+   * 2026-11-13 に追加した項目なので、それより前に発行したレポートには入っていない。
+   */
+  keywords?: {
+    /** 回数の分かっている言葉の合計 */
+    total: number
+    words: { word: string; count: number }[]
+  } | null
+  errors: {
+    section: "posts" | "photos" | "insights" | "reviews" | "keywords"
+    message: string
+  }[]
 }
 
 export function isValidMonth(v: string | null | undefined): v is string {
