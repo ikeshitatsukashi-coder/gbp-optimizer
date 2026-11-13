@@ -8,7 +8,8 @@ import { getServiceAccessToken } from "@/lib/services/cron-auth"
  * 予約投稿の自動実行で使っている保存済みの認証で読み直す。
  * （担当のログインが切れていてもレポートを出せるようにするため）
  *
- * ここを通す処理は読み取りだけにすること。書き込みには使わない。
+ * 書き込みに使ってよいのは「担当が画面で1件ずつ承認した操作」（クチコミへの返信の投稿）だけ。
+ * その場合は withGoogleAuth の名前で呼び、まとめて書き込む処理には使わない。
  */
 
 /** 認証切れ・権限不足のエラーか */
@@ -50,3 +51,9 @@ export async function withGoogleRead<T>(fn: (accessToken: string) => Promise<T>)
   }
   throw lastErr
 }
+
+/**
+ * 担当が画面で1件ずつ承認した操作（クチコミへの返信の投稿）用。中身は withGoogleRead と同じで、
+ * ログイン中の担当の認証 → 切れていれば保存済みの認証、の順に使う。
+ */
+export const withGoogleAuth = withGoogleRead

@@ -23,6 +23,8 @@ export const menuConfig: MenuGroup[] = [
       { label: "月次レポート", href: "/reports/monthly" },
       { label: "写真の受付ページ", href: "/photo-intake" },
       { label: "投稿ボタンのクリック数", href: "/post-clicks" },
+      { label: "低評価クチコミのお知らせ", href: "/review-notices" },
+      { label: "クチコミ返信の下書き", href: "/review-replies" },
     ],
   },
   {
