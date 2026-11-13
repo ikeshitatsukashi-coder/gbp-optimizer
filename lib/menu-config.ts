@@ -22,6 +22,7 @@ export const menuConfig: MenuGroup[] = [
     children: [
       { label: "月次レポート", href: "/reports/monthly" },
       { label: "写真の受付ページ", href: "/photo-intake" },
+      { label: "投稿ボタンのクリック数", href: "/post-clicks" },
     ],
   },
   {

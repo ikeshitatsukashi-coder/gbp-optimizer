@@ -7,6 +7,7 @@ import { getAccessToken } from "@/lib/get-session"
 import { getServiceAccessToken } from "@/lib/services/cron-auth"
 import { filterApprovedForExecution } from "@/lib/services/approvals"
 import { acquireExecuteLock, releaseExecuteLock } from "@/lib/services/execute-lock"
+import { trackedUrlForPost } from "@/lib/services/post-click-tracking"
 import { MAX_POST_PHOTOS } from "@/lib/post-limits"
 
 /** 投稿実行に時間がかかるため延長（1回最大20件） */
@@ -74,7 +75,14 @@ async function executeOne(
     mediaUrls: string[] | null
     callToAction: { actionType?: string; url?: string } | null
   }
-): Promise<{ ok: boolean; error?: string; result?: unknown; extraPhotoUrls?: string[] }> {
+): Promise<{
+  ok: boolean
+  error?: string
+  result?: unknown
+  extraPhotoUrls?: string[]
+  /** on = 計測用URLで投稿した / fallback = 計測用URLが通らず元のURLで投稿した */
+  clickTracking?: "on" | "fallback"
+}> {
   const client = createGmbClient(accessToken)
   // 動画は「最新情報」には付けられないため、店舗の「写真・動画」欄に載せる
   if (post.postType === "VIDEO") {
@@ -96,8 +104,13 @@ async function executeOne(
     summary: post.summary,
     topicType: post.postType,
   }
+  // ボタンのクリック数の計測（店舗でONにしている場合だけ。それ以外は null が返り、何も変わらない）。
+  // 計測用URLを用意できなくても投稿は止めず、元のURLのまま出す。
+  let trackedUrl: string | null = null
   if (post.callToAction?.actionType) {
     body.callToAction = post.callToAction
+    trackedUrl = await trackedUrlForPost(post).catch(() => null)
+    if (trackedUrl) body.callToAction = { ...post.callToAction, url: trackedUrl }
   }
   // Google の投稿APIは1投稿につき写真1枚しか受け付けない（複数送ると投稿ごと拒否される。
   // 2026-11-05 に5枚・11-09 に7枚で実測）。投稿には1枚目だけを付け、
@@ -108,9 +121,32 @@ async function executeOne(
   }
   try {
     const result = await client.createPost(post.accountName, post.locationName, body)
-    return { ok: true, result, extraPhotoUrls: photos.slice(1) }
+    return {
+      ok: true,
+      result,
+      extraPhotoUrls: photos.slice(1),
+      ...(trackedUrl ? { clickTracking: "on" as const } : {}),
+    }
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    const message = e instanceof Error ? e.message : String(e)
+    // 計測用URLで出して Google に内容を断られた（400）場合だけ、元のURLで1回出し直す。
+    // 400 は「投稿が作られていない」ことが確かなので、二重投稿にはならない。
+    // 通信の途切れなど、作られたかどうか分からない失敗では出し直さない。
+    if (trackedUrl && /GMB API error: 400\b/.test(message)) {
+      try {
+        body.callToAction = post.callToAction
+        const result = await client.createPost(post.accountName, post.locationName, body)
+        return {
+          ok: true,
+          result,
+          extraPhotoUrls: photos.slice(1),
+          clickTracking: "fallback" as const,
+        }
+      } catch (e2) {
+        return { ok: false, error: e2 instanceof Error ? e2.message : String(e2) }
+      }
+    }
+    return { ok: false, error: message }
   }
 }
 
@@ -220,7 +256,10 @@ async function runExecution(accessToken: string, trigger: string) {
 
       if (r.ok) {
         const extra = r.extraPhotoUrls ?? []
-        const base = (r.result ?? {}) as Record<string, unknown>
+        const base = {
+          ...((r.result ?? {}) as Record<string, unknown>),
+          ...(r.clickTracking ? { clickTracking: r.clickTracking } : {}),
+        }
         const saved: Record<string, unknown> =
           extra.length > 0
             ? {
