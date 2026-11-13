@@ -154,7 +154,7 @@
   min-height: 72px;
   padding: 8px 32px;
   border: 1px solid var(--ink);
-  border-radius: 0;
+  border-radius:0;
   background: var(--ink);
   color: var(--paper);
   font: 900 clamp(18px, 4.6vw, 22px) / 1.4 var(--font-zen), sans-serif;
@@ -275,7 +275,7 @@
   padding: 8px 0;
   border: 0;
   border-bottom: 1px solid var(--ink);
-  border-radius: 0;
+  border-radius:0;
   background: transparent;
   color: var(--ink);
   /* 16px未満だとスマホで入力時に画面が拡大されるため、16pxを下回らせない */

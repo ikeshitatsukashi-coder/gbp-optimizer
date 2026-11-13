@@ -25,10 +25,11 @@ const MONTH_EN = [
 
 const nf = (n: number) => n.toLocaleString("ja-JP")
 
-/** 投稿の抜粋から絵文字・改行を外して1行にする（表示のためだけ。投稿そのものは変えない） */
+/** 投稿の抜粋から絵文字・飾りの記号（♪★など）・改行を外して1行にする（表示のためだけ。投稿そのものは変えない） */
 function plain(text: string): string {
   return text
-    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}]/gu, "")
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{20E3}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/gu, "")
+    .replace(/[\u{2190}-\u{21FF}]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
 }
